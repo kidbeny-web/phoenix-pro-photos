@@ -39,6 +39,7 @@ object Indexer {
                 if (Prefs(ctx).paired && Prefs(ctx).autoSync) {
                     Sync.uploadPending(ctx) { d, t -> set("Envoi vers le PC", d, t) }
                 }
+                Unit
             } catch (e: Throwable) {
                 Log.e("Phoenix", "Indexation", e)
             } finally {
