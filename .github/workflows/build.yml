@@ -2,7 +2,7 @@ name: Fabriquer l'APK
 
 on:
   push:
-    branches: [main]
+    branches: [agenda]
   workflow_dispatch:
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete derniere-version --yes --cleanup-tag || true
-          gh release create derniere-version PhoenixProAgenda.apk \
+          gh release delete agenda-derniere-version --yes --cleanup-tag || true
+          gh release create agenda-derniere-version PhoenixProAgenda.apk --target agenda --latest=false \
             --title "Phoenix Pro Agenda (Android) — build ${{ github.run_number }}" \
             --notes "APK prêt à installer sur le téléphone."
