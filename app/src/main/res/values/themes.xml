@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Retouche" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bar</item>
+        <item name="android:navigationBarColor">@color/bar</item>
+        <item name="android:colorAccent">#FFFF6A2B</item>
+    </style>
+</resources>
