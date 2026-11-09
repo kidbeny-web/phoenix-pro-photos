@@ -48,7 +48,7 @@ object Db {
         helper = Helper(context)
     }
 
-    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, "phoenix.db", null, 2) {
+    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, "phoenix.db", null, 3) {
         override fun onConfigure(db: SQLiteDatabase) {
             db.setForeignKeyConstraintsEnabled(true)
             db.enableWriteAheadLogging()
@@ -60,7 +60,7 @@ object Db {
                 id INTEGER PRIMARY KEY, name TEXT, folder TEXT, taken INTEGER, modified INTEGER,
                 width INTEGER, height INTEGER, size INTEGER,
                 lat REAL, lon REAL, place TEXT, region TEXT, country TEXT, name_n TEXT, place_n TEXT,
-                fav INTEGER DEFAULT 0, rating INTEGER DEFAULT 0, gps_done INTEGER DEFAULT 0, faces_done INTEGER DEFAULT 0, synced INTEGER DEFAULT 0)"""
+                fav INTEGER DEFAULT 0, rating INTEGER DEFAULT 0, noted_at INTEGER DEFAULT 0, gps_done INTEGER DEFAULT 0, faces_done INTEGER DEFAULT 0, synced INTEGER DEFAULT 0)"""
             )
             db.execSQL("CREATE INDEX idx_taken ON photos(taken)")
             db.execSQL(
@@ -79,6 +79,7 @@ object Db {
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
             if (oldVersion < 2) db.execSQL("ALTER TABLE photos ADD COLUMN rating INTEGER DEFAULT 0")
+            if (oldVersion < 3) db.execSQL("ALTER TABLE photos ADD COLUMN noted_at INTEGER DEFAULT 0")
         }
     }
 
@@ -226,7 +227,7 @@ object Db {
     // ------------------------------------------------------------------ écriture simple
 
     fun toggleFav(id: Long): Boolean {
-        db.execSQL("UPDATE photos SET fav=1-fav WHERE id=?", arrayOf(id))
+        db.execSQL("UPDATE photos SET fav=1-fav, noted_at=? WHERE id=?", arrayOf<Any>(System.currentTimeMillis(), id))
         PhoenixApp.changed()
         return photo(id)?.fav ?: false
     }
@@ -235,7 +236,8 @@ object Db {
         val v = value.coerceIn(0, 5)
         db.beginTransaction()
         try {
-            for (id in ids) db.execSQL("UPDATE photos SET rating=? WHERE id=?", arrayOf<Any>(v, id))
+            val now = System.currentTimeMillis()
+            for (id in ids) db.execSQL("UPDATE photos SET rating=?, noted_at=? WHERE id=?", arrayOf<Any>(v, now, id))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()

@@ -101,7 +101,7 @@ fun PcScreen() {
                 Column(Modifier.padding(18.dp)) {
                     when (val s = status) {
                         null -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Connexion au PC…")
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Recherche du PC sur le Wi-Fi…")
                         }
                         is Sync.PingResult.Ok -> Text("● PC connecté", color = PhoenixTeal, style = MaterialTheme.typography.titleMedium)
                         is Sync.PingResult.Error -> {

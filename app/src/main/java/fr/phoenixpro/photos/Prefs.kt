@@ -35,6 +35,13 @@ class Prefs(context: Context) {
         get() = sp.getLong("last_sync", 0L)
         set(v) = sp.edit().putLong("last_sync", v).apply()
 
+    /** Autres adresses possibles du PC (fournies par le QR code). */
+    var pcAltHosts: List<String>
+        get() = (sp.getString("pc_alt", "") ?: "").split(",").filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("pc_alt", v.joinToString(",")).apply()
+
+    val pcPort: Int get() = try { Uri.parse(pcUrl).port.takeIf { it > 0 } ?: 8765 } catch (e: Exception) { 8765 }
+
     val paired: Boolean get() = pcUrl.isNotBlank() && pcKey.isNotBlank()
 
     /** Lit le lien du QR code affiché sur le PC : http://192.168.1.20:8765/?cle=XXXX */
@@ -46,6 +53,7 @@ class Prefs(context: Context) {
             val port = if (u.port > 0) ":${u.port}" else ""
             pcUrl = "${u.scheme ?: "http"}://${u.host}$port"
             pcKey = key
+            pcAltHosts = (u.getQueryParameter("ips") ?: "").split(",").map { it.trim() }.filter { it.isNotBlank() }
             true
         } catch (e: Exception) {
             false
