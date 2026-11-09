@@ -1,4 +1,4 @@
-package fr.phoenixpro.agenda.ui
+package fr.phoenixpro.music.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -69,11 +69,7 @@ private val Type = Typography(
 )
 
 @Composable
-fun AgendaTheme(content: @Composable () -> Unit) {
+fun MusicTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, typography = Type, content = content)
 }
 
-/** Rouge des jours fériés. */
-val HolidayRed = Color(0xFFD93F3F)
-/** Teinte des jours de vacances scolaires. */
-val SchoolTint = Color(0x26F08A1C)

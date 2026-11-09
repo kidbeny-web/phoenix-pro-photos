@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phoenix Pro Music — envoi depuis le PC</title>
+<style>
+  :root { --blue:#1D63C4; --orange:#F08A1C; --purple:#7B3FBF; --teal:#1BA39C; --ink:#111417; --sub:#4D5459; --line:#D9DCDF; --soft:#F5F6F7; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; color:var(--ink); background:#fff; }
+  header { padding:28px 32px 8px; display:flex; align-items:center; gap:14px; }
+  .logo { width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,var(--blue),var(--purple) 60%,var(--orange)); }
+  h1 { font-size:24px; margin:0; letter-spacing:-.4px; }
+  header p { margin:2px 0 0; color:var(--sub); font-size:14px; }
+  main { max-width:860px; margin:0 auto; padding:16px 32px 48px; }
+  .card { background:var(--soft); border-radius:16px; padding:20px; margin-bottom:16px; }
+  label.small { font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--sub); }
+  input[type=text] { font-size:28px; letter-spacing:8px; width:180px; padding:8px 12px; border:1px solid var(--line); border-radius:10px; margin-top:6px; }
+  #drop { border:2px dashed var(--line); border-radius:16px; padding:42px 20px; text-align:center; transition:.15s; background:#fff; }
+  #drop.over { border-color:var(--blue); background:#E8F0FB; }
+  #drop h2 { margin:0 0 6px; font-size:20px; }
+  #drop p { margin:0 0 16px; color:var(--sub); }
+  button { font:inherit; font-weight:600; border:0; border-radius:999px; padding:11px 20px; cursor:pointer; }
+  .primary { background:var(--blue); color:#fff; }
+  .ghost { background:#E8F0FB; color:#0E3A78; margin-left:8px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .bar { height:8px; border-radius:4px; background:var(--line); overflow:hidden; margin:10px 0 6px; }
+  .bar div { height:100%; width:0; background:linear-gradient(90deg,var(--blue),var(--teal)); transition:width .2s; }
+  #status { font-weight:600; }
+  #detail { color:var(--sub); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #log { font-size:13px; color:var(--sub); max-height:220px; overflow:auto; margin-top:10px; }
+  .err { color:#C62828; }
+  .ok { color:var(--teal); }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div>
+  <div><h1>Phoenix Pro Music</h1><p id="target">Envoi de musique vers le téléphone</p></div>
+</header>
+<main>
+  <div class="card" id="codeCard">
+    <label class="small" for="code">Code affiché sur le téléphone</label><br>
+    <input id="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off">
+    <button class="primary" id="connect" style="margin-left:10px">Connecter</button>
+    <div id="codeMsg" class="err"></div>
+  </div>
+
+  <div id="sendArea" class="hidden">
+    <div id="drop">
+      <h2>Glisse ici tes dossiers d'albums</h2>
+      <p>FLAC, MP3, ALAC, WAV… et les pochettes (cover.jpg, folder.jpg). Les fichiers déjà sur le téléphone sont sautés.</p>
+      <button class="primary" id="pickDir">Choisir un dossier</button>
+      <button class="ghost" id="pickFiles">Choisir des fichiers</button>
+      <input type="file" id="dirInput" webkitdirectory directory multiple class="hidden">
+      <input type="file" id="fileInput" multiple class="hidden" accept="audio/*,.flac,.jpg,.jpeg,.png">
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div id="status">Prêt</div>
+      <div class="bar"><div id="total"></div></div>
+      <div id="detail"></div>
+      <div class="bar"><div id="cur"></div></div>
+      <div id="log"></div>
+    </div>
+  </div>
+</main>
+<script>
+var AUDIO = ["flac","mp3","m4a","aac","ogg","opus","wav","aiff","aif","wv","alac"];
+var IMG = ["jpg","jpeg","png"];
+var code = "";
+var busy = false;
+var queue = [];
+
+function el(id) { return document.getElementById(id); }
+function ext(n) { var i = n.lastIndexOf("."); return i < 0 ? "" : n.substring(i + 1).toLowerCase(); }
+function wanted(n) { var e = ext(n); return AUDIO.indexOf(e) >= 0 || IMG.indexOf(e) >= 0; }
+function size(b) { return b > 1073741824 ? (b / 1073741824).toFixed(2) + " Go" : (b / 1048576).toFixed(0) + " Mo"; }
+function log(t, cls) { var d = document.createElement("div"); d.textContent = t; if (cls) d.className = cls; el("log").prepend(d); }
+
+function api(method, path, body) {
+  return fetch(path, { method: method, headers: { "X-Code": code }, body: body }).then(function (r) {
+    if (r.status === 403) throw new Error("code");
+    return r.json();
+  });
+}
+
+el("connect").onclick = function () {
+  code = el("code").value.trim();
+  api("GET", "/api/info").then(function (j) {
+    el("codeCard").classList.add("hidden");
+    el("sendArea").classList.remove("hidden");
+    el("target").textContent = "Connecté — la musique sera rangée dans : " + j.storage;
+  }).catch(function () { el("codeMsg").textContent = "Code incorrect, vérifie sur le téléphone."; });
+};
+el("code").addEventListener("keydown", function (e) { if (e.key === "Enter") el("connect").click(); });
+var qs = new URLSearchParams(location.search);
+if (qs.get("c")) { el("code").value = qs.get("c"); }
+
+el("pickDir").onclick = function () { el("dirInput").click(); };
+el("pickFiles").onclick = function () { el("fileInput").click(); };
+el("dirInput").onchange = function (e) { add(Array.prototype.map.call(e.target.files, function (f) { return { file: f, path: f.webkitRelativePath || f.name }; })); e.target.value = ""; };
+el("fileInput").onchange = function (e) { add(Array.prototype.map.call(e.target.files, function (f) { return { file: f, path: f.name }; })); e.target.value = ""; };
+
+var drop = el("drop");
+drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", function () { drop.classList.remove("over"); });
+drop.addEventListener("drop", function (e) {
+  e.preventDefault(); drop.classList.remove("over");
+  var items = e.dataTransfer.items, entries = [];
+  for (var i = 0; i < items.length; i++) { var en = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry(); if (en) entries.push(en); }
+  el("status").textContent = "Lecture des dossiers…";
+  Promise.all(entries.map(walk)).then(function (lists) { add([].concat.apply([], lists)); });
+});
+
+function readAll(reader) {
+  return new Promise(function (res) {
+    var all = [];
+    (function next() { reader.readEntries(function (batch) { if (!batch.length) res(all); else { all = all.concat(batch); next(); } }, function () { res(all); }); })();
+  });
+}
+function walk(entry) {
+  if (entry.isFile) return new Promise(function (res) { entry.file(function (f) { res([{ file: f, path: entry.fullPath.replace(/^\//, "") }]); }, function () { res([]); }); });
+  if (entry.isDirectory) return readAll(entry.createReader()).then(function (ch) { return Promise.all(ch.map(walk)).then(function (l) { return [].concat.apply([], l); }); });
+  return Promise.resolve([]);
+}
+
+function add(list) {
+  list = list.filter(function (x) { return wanted(x.file.name); });
+  if (!list.length) { el("status").textContent = "Aucun fichier audio trouvé dans ce choix."; return; }
+  queue = queue.concat(list);
+  if (!busy) run();
+}
+
+function run() {
+  busy = true;
+  el("status").textContent = "Comparaison avec le téléphone…";
+  api("GET", "/api/list").then(function (existing) {
+    var have = {};
+    existing.forEach(function (p) { have[p.toLowerCase()] = 1; });
+    var todo = queue.filter(function (x) { return IMG.indexOf(ext(x.file.name)) >= 0 || !have[x.path.toLowerCase()]; });
+    var skipped = queue.length - todo.length;
+    queue = [];
+    if (skipped) log(skipped + " fichier(s) déjà sur le téléphone, sautés.");
+    var totalBytes = todo.reduce(function (s, x) { return s + x.file.size; }, 0), doneBytes = 0, i = 0, fails = 0;
+    function next() {
+      if (i >= todo.length) {
+        api("POST", "/api/done").catch(function () {});
+        el("status").innerHTML = fails ? "Terminé avec " + fails + " erreur(s)" : "<span class='ok'>Terminé ✓</span>";
+        el("detail").textContent = todo.length + " fichier(s) · " + size(totalBytes);
+        el("total").style.width = "100%"; el("cur").style.width = "0";
+        busy = false;
+        if (queue.length) run();
+        return;
+      }
+      var x = todo[i];
+      el("status").textContent = "Envoi " + (i + 1) + " / " + todo.length + " — " + size(doneBytes) + " sur " + size(totalBytes);
+      el("detail").textContent = x.path;
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload?p=" + encodeURIComponent(x.path));
+      xhr.setRequestHeader("X-Code", code);
+      xhr.upload.onprogress = function (ev) {
+        if (ev.lengthComputable) {
+          el("cur").style.width = (ev.loaded / ev.total * 100) + "%";
+          el("total").style.width = ((doneBytes + ev.loaded) / Math.max(totalBytes, 1) * 100) + "%";
+        }
+      };
+      xhr.onload = function () {
+        var ok = false; try { ok = JSON.parse(xhr.responseText).ok; } catch (e) {}
+        if (!ok) { fails++; log("Échec : " + x.path, "err"); }
+        doneBytes += x.file.size; i++; next();
+      };
+      xhr.onerror = function () { fails++; log("Connexion perdue : " + x.path, "err"); doneBytes += x.file.size; i++; setTimeout(next, 1500); };
+      xhr.send(x.file);
+    }
+    next();
+  }).catch(function (e) {
+    busy = false;
+    el("status").textContent = e.message === "code" ? "Le code a changé : recharge la page." : "Téléphone injoignable. Vérifie que la réception est démarrée.";
+  });
+}
+</script>
+</body>
+</html>

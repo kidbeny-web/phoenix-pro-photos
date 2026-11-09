@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace = "fr.phoenixpro.agenda"
+    namespace = "fr.phoenixpro.music"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "fr.phoenixpro.agenda"
-        minSdk = 28
+        applicationId = "fr.phoenixpro.music"
+        minSdk = 29
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
@@ -56,4 +56,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    val media3 = "1.4.1"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-session:$media3")
 }

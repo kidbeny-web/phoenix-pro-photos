@@ -1,8 +1,4 @@
 <resources>
     <color name="window_bg">#FFFFFFFF</color>
     <color name="launcher_bg">#FFFFFFFF</color>
-    <color name="widget_bg">#F2FFFFFF</color>
-    <color name="widget_text">#FF111417</color>
-    <color name="widget_sub">#FF4D5459</color>
-    <color name="widget_accent">#FF1D63C4</color>
 </resources>

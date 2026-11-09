@@ -2,7 +2,7 @@ name: Fabriquer l'APK
 
 on:
   push:
-    branches: [agenda]
+    branches: [music]
   workflow_dispatch:
 
 permissions:
@@ -27,18 +27,18 @@ jobs:
         run: gradle assembleRelease --stacktrace --no-daemon
 
       - name: Renommer
-        run: cp app/build/outputs/apk/release/app-release.apk PhoenixProAgenda.apk
+        run: cp app/build/outputs/apk/release/app-release.apk PhoenixProMusic.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PhoenixProAgenda-apk
-          path: PhoenixProAgenda.apk
+          name: PhoenixProMusic-apk
+          path: PhoenixProMusic.apk
 
       - name: Publier la version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete agenda-derniere-version --yes --cleanup-tag || true
-          gh release create agenda-derniere-version PhoenixProAgenda.apk --target agenda --latest=false \
-            --title "Phoenix Pro Agenda (Android) — build ${{ github.run_number }}" \
+          gh release delete music-derniere-version --yes --cleanup-tag || true
+          gh release create music-derniere-version PhoenixProMusic.apk --target music --latest=false \
+            --title "Phoenix Pro Music (Android) — build ${{ github.run_number }}" \
             --notes "APK prêt à installer sur le téléphone."

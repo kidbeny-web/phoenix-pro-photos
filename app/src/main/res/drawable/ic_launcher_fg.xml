@@ -1,13 +1,21 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Vinyle -->
+    <path android:fillColor="#111417"
+        android:pathData="M22,60a26,26 0,1 0,52 0a26,26 0,1 0,-52 0z" />
+    <path android:strokeColor="#3A4046" android:strokeWidth="0.9"
+        android:pathData="M26,60a22,22 0,1 0,44 0a22,22 0,1 0,-44 0zM30,60a18,18 0,1 0,36 0a18,18 0,1 0,-36 0zM34,60a14,14 0,1 0,28 0a14,14 0,1 0,-28 0z" />
+    <!-- Ailes du phénix -->
     <path android:fillColor="#1D63C4"
-        android:pathData="M36,32h36a6,6 0,0 1,6 6v34a6,6 0,0 1,-6 6h-36a6,6 0,0 1,-6 -6v-34a6,6 0,0 1,6 -6z" />
+        android:pathData="M48,58C55,41 66,31 84,24C78,37 71,48 58,60Z" />
+    <path android:fillColor="#7B3FBF"
+        android:pathData="M47,58C48,43 53,32 62,21C63,35 61,47 55,60Z" />
     <path android:fillColor="#F08A1C"
-        android:pathData="M36,32h36a6,6 0,0 1,6 6v6h-48v-6a6,6 0,0 1,6 -6z" />
+        android:pathData="M50,60C61,52 73,48 87,48C77,56 66,62 55,64Z" />
+    <!-- Étiquette -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M40,60a8,8 0,1 0,16 0a8,8 0,1 0,-16 0z" />
     <path android:fillColor="#FFFFFF"
-        android:pathData="M37,50h8v7h-8zM50,50h8v7h-8zM63,50h8v7h-8zM37,62h8v7h-8zM50,62h8v7h-8z" />
-    <path android:fillColor="#7B3FBF" android:pathData="M63,62h8v7h-8z" />
-    <path android:fillColor="#0E3A78"
-        android:pathData="M40,27h4v10h-4zM64,27h4v10h-4z" />
+        android:pathData="M46.4,60a1.6,1.6 0,1 0,3.2 0a1.6,1.6 0,1 0,-3.2 0z" />
 </vector>

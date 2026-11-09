@@ -1,7 +1,13 @@
-# Phoenix Pro Agenda — Android
+# Phoenix Pro Music — Android
 
-Agenda simple dans le style de Phoenix Pro Photos : rendez-vous, notes, jours fériés français, numéros de semaine, vacances scolaires (zone A, B ou C), rappels, rendez-vous répétés, catégories en couleur et widget d'écran d'accueil.
+Lecteur de musique FLAC dans le style Phoenix Pro (ex-Flacothèque) :
 
-Tout est enregistré sur le téléphone (rien n'est envoyé sur Internet). Seules les dates de vacances scolaires sont téléchargées depuis le site du ministère de l'Éducation nationale.
+- Bibliothèque (albums, artistes, titres, recherche) depuis la mémoire du téléphone et la carte microSD
+- Lecture haute résolution (32 bits flottant) et **bit-perfect vers un DAC USB** (Android 14+)
+- Pochettes : image du dossier, image intégrée au fichier, sinon recherche sur MusicBrainz / Cover Art Archive
+- Biographie et photo des artistes (Wikipédia)
+- Égaliseur 10 bandes avec préréglages et préampli
+- Playlists, favoris, écoutés récemment, les plus écoutés
+- Envoi des albums depuis le PC par le Wi-Fi : le téléphone affiche une adresse, on l'ouvre dans le navigateur du PC et on glisse ses dossiers
 
-L'APK est fabriqué automatiquement par GitHub Actions à chaque modification : onglet **Releases** → « agenda-derniere-version » → `PhoenixProAgenda.apk`.
+L'APK est fabriqué automatiquement par GitHub Actions à chaque modification : onglet **Releases** → « music-derniere-version » → `PhoenixProMusic.apk`.
