@@ -27,6 +27,10 @@ class Prefs(context: Context) {
         get() = sp.getFloat("face_threshold", 0.42f)
         set(v) = sp.edit().putFloat("face_threshold", v).apply()
 
+    var sort: String
+        get() = sp.getString("tri", "date_desc") ?: "date_desc"
+        set(v) = sp.edit().putString("tri", v).apply()
+
     var lastSync: Long
         get() = sp.getLong("last_sync", 0L)
         set(v) = sp.edit().putLong("last_sync", v).apply()

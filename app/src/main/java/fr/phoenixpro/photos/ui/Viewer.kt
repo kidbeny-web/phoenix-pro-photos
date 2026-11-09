@@ -48,8 +48,11 @@ import org.osmdroid.views.overlay.Marker
 fun Viewer(ids: List<Long>, start: Int, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val nav = LocalNav.current
+    val trash = LocalTrash.current
     val scope = rememberCoroutineScope()
-    val pager = rememberPagerState(initialPage = start.coerceIn(0, (ids.size - 1).coerceAtLeast(0))) { ids.size }
+    val viewerState = LocalViewer.current
+    val idsNow by rememberUpdatedState(ids)
+    val pager = rememberPagerState(initialPage = start.coerceIn(0, (ids.size - 1).coerceAtLeast(0))) { idsNow.size }
     var zoomed by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(true) }
     var info by remember { mutableStateOf(false) }
@@ -59,7 +62,7 @@ fun Viewer(ids: List<Long>, start: Int, onClose: () -> Unit) {
     val faces = rememberData(currentId) { Db.facesOf(currentId) } ?: emptyList()
 
     BackHandler { onClose() }
-    LaunchedEffect(pager.currentPage) { zoomed = false }
+    LaunchedEffect(pager.currentPage) { zoomed = false; viewerState.index = pager.currentPage }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(state = pager, userScrollEnabled = !zoomed, key = { ids[it] }, beyondBoundsPageCount = 1) { page ->
@@ -80,12 +83,16 @@ fun Viewer(ids: List<Long>, start: Int, onClose: () -> Unit) {
                     }
                 }
             }
-            Row(
+            Column(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000))))
                     .navigationBarsPadding().padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+            StarsRow(photo?.rating ?: 0, size = 26.dp, idle = Color(0x99FFFFFF)) { r ->
+                scope.launch { withContext(Dispatchers.IO) { Db.setRating(listOf(currentId), r) } }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ViewerAction(Icons.Outlined.Share, "Partager") {
                     photo?.let {
                         val send = Intent(Intent.ACTION_SEND).apply {
@@ -99,6 +106,8 @@ fun Viewer(ids: List<Long>, start: Int, onClose: () -> Unit) {
                     scope.launch { withContext(Dispatchers.IO) { Db.toggleFav(currentId) } }
                 }
                 ViewerAction(Icons.Outlined.Info, "Infos") { info = true }
+                ViewerAction(Icons.Outlined.Delete, "Corbeille") { trash.trash(listOf(currentId)) }
+            }
             }
         }
     }

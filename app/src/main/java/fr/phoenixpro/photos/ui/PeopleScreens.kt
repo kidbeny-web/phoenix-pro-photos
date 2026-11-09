@@ -88,7 +88,8 @@ fun PersonScreen(id: Long) {
     val focus = LocalFocusManager.current
     val person = rememberData(id) { Db.person(id) }
     val faces = rememberData(id) { Db.personFaces(id) }
-    val photos = rememberData(id) { Db.photos(personId = id) }
+    val sort = LocalSort.current.key
+    val photos = rememberData(id, sort) { Db.photos(personId = id, sort = sort) }
     val sugg = rememberData(id) { Clusters.suggestions(id) }
     var name by remember(person?.name) { mutableStateOf(person?.name ?: "") }
     var menuFace by remember { mutableStateOf<Face?>(null) }
@@ -164,7 +165,10 @@ fun PersonScreen(id: Long) {
                         FaceAvatar(f.id, 64.dp, Modifier.clickable { menuFace = f })
                     }
                 }
-                SectionLabel("Photos")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { SectionLabel("Photos") }
+                    SortButton()
+                }
             }
         }
     })

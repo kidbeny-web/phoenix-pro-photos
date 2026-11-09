@@ -24,6 +24,7 @@ data class Photo(
     val fav: Boolean,
     val size: Long,
     val folder: String?,
+    val rating: Int = 0,
 ) {
     val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
 }
@@ -47,7 +48,7 @@ object Db {
         helper = Helper(context)
     }
 
-    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, "phoenix.db", null, 1) {
+    private class Helper(ctx: Context) : SQLiteOpenHelper(ctx, "phoenix.db", null, 2) {
         override fun onConfigure(db: SQLiteDatabase) {
             db.setForeignKeyConstraintsEnabled(true)
             db.enableWriteAheadLogging()
@@ -59,7 +60,7 @@ object Db {
                 id INTEGER PRIMARY KEY, name TEXT, folder TEXT, taken INTEGER, modified INTEGER,
                 width INTEGER, height INTEGER, size INTEGER,
                 lat REAL, lon REAL, place TEXT, region TEXT, country TEXT, name_n TEXT, place_n TEXT,
-                fav INTEGER DEFAULT 0, gps_done INTEGER DEFAULT 0, faces_done INTEGER DEFAULT 0, synced INTEGER DEFAULT 0)"""
+                fav INTEGER DEFAULT 0, rating INTEGER DEFAULT 0, gps_done INTEGER DEFAULT 0, faces_done INTEGER DEFAULT 0, synced INTEGER DEFAULT 0)"""
             )
             db.execSQL("CREATE INDEX idx_taken ON photos(taken)")
             db.execSQL(
@@ -76,7 +77,9 @@ object Db {
             db.execSQL("CREATE INDEX idx_faces_person ON faces(person_id)")
         }
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) db.execSQL("ALTER TABLE photos ADD COLUMN rating INTEGER DEFAULT 0")
+        }
     }
 
     // ------------------------------------------------------------------ lecture
@@ -85,10 +88,19 @@ object Db {
         id = getLong(0), name = getString(1) ?: "", taken = getLong(2), width = getInt(3), height = getInt(4),
         lat = if (isNull(5)) null else getDouble(5), lon = if (isNull(6)) null else getDouble(6),
         place = getString(7), region = getString(8), country = getString(9), fav = getInt(10) == 1,
-        size = getLong(11), folder = getString(12),
+        size = getLong(11), folder = getString(12), rating = getInt(13),
     )
 
-    private const val PHOTO_COLS = "id, name, taken, width, height, lat, lon, place, region, country, fav, size, folder"
+    private const val PHOTO_COLS = "id, name, taken, width, height, lat, lon, place, region, country, fav, size, folder, rating"
+
+    /** Tris proposés : clé → (libellé, ORDER BY). */
+    val SORTS = linkedMapOf(
+        "date_desc" to ("Plus récentes" to "taken DESC, id DESC"),
+        "date_asc" to ("Plus anciennes" to "taken ASC, id ASC"),
+        "note" to ("Mieux notées" to "rating DESC, taken DESC, id DESC"),
+        "nom" to ("Nom du fichier" to "name_n ASC, id ASC"),
+        "taille" to ("Plus lourdes" to "size DESC, id DESC"),
+    )
 
     private val MONTHS = mapOf(
         "janvier" to 1, "fevrier" to 2, "mars" to 3, "avril" to 4, "mai" to 5, "juin" to 6, "juillet" to 7,
@@ -96,7 +108,7 @@ object Db {
     )
 
     /** Liste des photos, filtrée par personne, favoris, lieu ou texte de recherche. */
-    fun photos(personId: Long? = null, favOnly: Boolean = false, place: String? = null, query: String? = null): List<Photo> {
+    fun photos(personId: Long? = null, favOnly: Boolean = false, place: String? = null, query: String? = null, sort: String = "date_desc"): List<Photo> {
         val where = mutableListOf<String>()
         val args = mutableListOf<String>()
         if (personId != null) {
@@ -123,7 +135,8 @@ object Db {
             }
         }
         val w = if (where.isEmpty()) "" else " WHERE " + where.joinToString(" AND ")
-        db.rawQuery("SELECT $PHOTO_COLS FROM photos$w ORDER BY taken DESC, id DESC", args.toTypedArray()).use { c ->
+        val order = (SORTS[sort] ?: SORTS.getValue("date_desc")).second
+        db.rawQuery("SELECT $PHOTO_COLS FROM photos$w ORDER BY $order", args.toTypedArray()).use { c ->
             val out = ArrayList<Photo>(c.count)
             while (c.moveToNext()) out += c.toPhoto()
             return out
@@ -216,6 +229,36 @@ object Db {
         db.execSQL("UPDATE photos SET fav=1-fav WHERE id=?", arrayOf(id))
         PhoenixApp.changed()
         return photo(id)?.fav ?: false
+    }
+
+    fun setRating(ids: Collection<Long>, value: Int) {
+        val v = value.coerceIn(0, 5)
+        db.beginTransaction()
+        try {
+            for (id in ids) db.execSQL("UPDATE photos SET rating=? WHERE id=?", arrayOf<Any>(v, id))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        PhoenixApp.changed()
+    }
+
+    /** Retire de la base des photos qui viennent d'être mises à la corbeille. */
+    fun removePhotos(ctx: Context, ids: Collection<Long>) {
+        db.beginTransaction()
+        try {
+            for (id in ids) {
+                db.rawQuery("SELECT id FROM faces WHERE photo_id=?", arrayOf(id.toString())).use { c ->
+                    while (c.moveToNext()) FaceEngine.faceFile(ctx, c.getLong(0)).delete()
+                }
+                db.delete("photos", "id=?", arrayOf(id.toString()))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        Clusters.cleanup()
+        PhoenixApp.changed()
     }
 
     fun setHidden(personId: Long, hidden: Boolean) {

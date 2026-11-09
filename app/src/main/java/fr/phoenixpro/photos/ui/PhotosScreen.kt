@@ -50,6 +50,7 @@ fun SearchBox(initial: String = "", onSettings: (() -> Unit)? = null) {
                     if (q.isNotBlank()) nav.go(Screen.Search(q.trim()))
                 }),
             )
+            SortButton()
             if (onSettings != null) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Réglages") }
         }
         val s = sugg
@@ -90,7 +91,8 @@ fun SearchBox(initial: String = "", onSettings: (() -> Unit)? = null) {
 @Composable
 fun PhotosScreen() {
     val nav = LocalNav.current
-    val photos = rememberData("all") { Db.photos() }
+    val sort = LocalSort.current.key
+    val photos = rememberData("all", sort) { Db.photos(sort = sort) }
     Column {
         SearchBox(onSettings = { nav.go(Screen.Settings) })
         ProgressBanner()
@@ -104,9 +106,10 @@ fun PhotosScreen() {
 
 @Composable
 fun FavsScreen() {
-    val photos = rememberData("fav") { Db.photos(favOnly = true) }
+    val sort = LocalSort.current.key
+    val photos = rememberData("fav", sort) { Db.photos(favOnly = true, sort = sort) }
     Column(Modifier.statusBarsPadding()) {
-        ScreenTitle("Favoris", photos?.let { if (it.isEmpty()) null else plural(it.size, "photo", "photos") })
+        ScreenTitle("Favoris", photos?.let { if (it.isEmpty()) null else plural(it.size, "photo", "photos") }) { SortButton() }
         if (photos != null && photos.isEmpty()) EmptyState("Pas encore de favoris", "Ouvrez une photo et touchez le cœur pour la retrouver ici.")
         else if (photos != null) PhotoGrid(photos)
     }
@@ -114,7 +117,8 @@ fun FavsScreen() {
 
 @Composable
 fun SearchScreen(query: String) {
-    val photos = rememberData(query) { Db.photos(query = query) }
+    val sort = LocalSort.current.key
+    val photos = rememberData(query, sort) { Db.photos(query = query, sort = sort) }
     Column {
         SearchBox(initial = query)
         ScreenTitle("« $query »", photos?.let { plural(it.size, "résultat", "résultats") })
@@ -125,9 +129,10 @@ fun SearchScreen(query: String) {
 
 @Composable
 fun PlaceScreen(name: String) {
-    val photos = rememberData(name) { Db.photos(place = name) }
+    val sort = LocalSort.current.key
+    val photos = rememberData(name, sort) { Db.photos(place = name, sort = sort) }
     Column(Modifier.statusBarsPadding()) {
-        ScreenTitle(name, photos?.let { plural(it.size, "photo", "photos") })
+        ScreenTitle(name, photos?.let { plural(it.size, "photo", "photos") }) { SortButton() }
         if (photos != null) PhotoGrid(photos)
     }
 }

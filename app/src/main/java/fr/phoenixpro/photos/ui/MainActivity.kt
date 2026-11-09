@@ -75,6 +75,16 @@ fun Root() {
     val ctx = LocalContext.current
     val nav = remember { Nav() }
     val viewer = remember { ViewerState() }
+    val selection = remember { SelectionState() }
+    val sort = remember { SortState(fr.phoenixpro.photos.Prefs(ctx)) }
+    val trash = rememberTrashAction { removed ->
+        selection.clear()
+        viewer.ids?.let { list ->
+            val left = list.filter { it !in removed }
+            if (left.isEmpty()) viewer.close()
+            else viewer.open(left, viewer.index.coerceAtMost(left.size - 1))
+        }
+    }
     var granted by remember { mutableStateOf(Scanner.hasMediaPermission(ctx)) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -86,11 +96,16 @@ fun Root() {
         else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.ACCESS_MEDIA_LOCATION)
     }
 
-    CompositionLocalProvider(LocalNav provides nav, LocalViewer provides viewer) {
+    CompositionLocalProvider(
+        LocalNav provides nav, LocalViewer provides viewer,
+        LocalSelection provides selection, LocalSort provides sort, LocalTrash provides trash,
+    ) {
         if (!granted) {
             Welcome { launcher.launch(perms) }
         } else {
-        BackHandler(enabled = viewer.ids == null && nav.stack.size > 1) { nav.back() }
+        BackHandler(enabled = viewer.ids == null && nav.stack.size > 1 && !selection.active) { nav.back() }
+        BackHandler(enabled = viewer.ids == null && selection.active) { selection.clear() }
+        LaunchedEffect(nav.stack.size, nav.current) { selection.clear() }
         Box(Modifier.fillMaxSize()) {
             Scaffold(
                 bottomBar = { BottomBar(nav) },
@@ -110,6 +125,7 @@ fun Root() {
                     }
                 }
             }
+            if (selection.active && viewer.ids == null) Box(Modifier.align(Alignment.TopCenter)) { SelectionBar() }
             viewer.ids?.let { ids -> Viewer(ids, viewer.index, onClose = { viewer.close() }) }
         }
         }

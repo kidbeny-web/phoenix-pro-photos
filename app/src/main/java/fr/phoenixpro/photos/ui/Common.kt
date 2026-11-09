@@ -10,7 +10,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -120,18 +126,39 @@ fun FaceAvatar(faceId: Long, size: Dp, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Thumb(photo: Photo, modifier: Modifier = Modifier) {
+fun Thumb(photo: Photo, modifier: Modifier = Modifier, selecting: Boolean = false, selected: Boolean = false) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
-        AsyncImage(model = photo.uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        AsyncImage(
+            model = photo.uri, contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().then(if (selected) Modifier.padding(10.dp).clip(RoundedCornerShape(8.dp)) else Modifier),
+        )
         if (photo.fav) Icon(
             Icons.Filled.Favorite, null, tint = Color.White,
             modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).size(14.dp),
         )
+        if (photo.rating > 0) Text(
+            "★ ${photo.rating}", color = Color.White, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).clip(RoundedCornerShape(6.dp))
+                .background(Color(0x73000000)).padding(horizontal = 5.dp, vertical = 1.dp),
+        )
+        if (selecting) Box(
+            Modifier.align(Alignment.TopStart).padding(6.dp).size(22.dp).clip(CircleShape)
+                .background(if (selected) MaterialTheme.colorScheme.primary else Color(0x33000000))
+                .border(2.dp, if (selected) MaterialTheme.colorScheme.primary else Color.White, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { if (selected) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp)) }
     }
 }
 
 /** Grille de photos groupées par mois et par jour. */
-fun LazyGridScope.photoSections(photos: List<Photo>, onOpen: (Int) -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun LazyGridScope.photoSections(photos: List<Photo>, byDate: Boolean, sel: SelectionState, onOpen: (Int) -> Unit) {
+    if (!byDate) {
+        photos.forEachIndexed { i, p ->
+            item(key = p.id) { PhotoCell(p, i, sel, onOpen) }
+        }
+        return
+    }
     var lastMonth = ""
     var lastDay = ""
     val cal = Calendar.getInstance()
@@ -163,10 +190,23 @@ fun LazyGridScope.photoSections(photos: List<Photo>, onOpen: (Int) -> Unit) {
                 }
             }
         }
-        item(key = p.id) {
-            Thumb(p, Modifier.aspectRatio(1f).clickable { onOpen(i) })
-        }
+        item(key = p.id) { PhotoCell(p, i, sel, onOpen) }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoCell(p: Photo, i: Int, sel: SelectionState, onOpen: (Int) -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val selected = p.id in sel.ids
+    Thumb(
+        p,
+        Modifier.aspectRatio(1f).combinedClickable(
+            onClick = { if (sel.active) sel.toggle(p.id) else onOpen(i) },
+            onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); sel.toggle(p.id) },
+        ),
+        selecting = sel.active, selected = selected,
+    )
 }
 
 @Composable
@@ -176,7 +216,10 @@ fun PhotoGrid(
     header: (LazyGridScope.() -> Unit)? = null,
 ) {
     val viewer = LocalViewer.current
+    val sel = LocalSelection.current
+    val sort = LocalSort.current
     val ids = remember(photos) { photos.map { it.id } }
+    LaunchedEffect(ids) { sel.visible = ids }
     LazyVerticalGrid(
         columns = GridCells.Adaptive(96.dp),
         modifier = modifier.fillMaxSize(),
@@ -185,7 +228,7 @@ fun PhotoGrid(
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         header?.invoke(this)
-        photoSections(photos) { i -> viewer.open(ids, i) }
+        photoSections(photos, sort.byDate, sel) { i -> viewer.open(ids, i) }
     }
 }
 
