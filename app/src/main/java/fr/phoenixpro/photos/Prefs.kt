@@ -31,6 +31,10 @@ class Prefs(context: Context) {
         get() = sp.getString("tri", "date_desc") ?: "date_desc"
         set(v) = sp.edit().putString("tri", v).apply()
 
+    var gridColumns: Int
+        get() = sp.getInt("colonnes", 4)
+        set(v) = sp.edit().putInt("colonnes", v).apply()
+
     var lastSync: Long
         get() = sp.getLong("last_sync", 0L)
         set(v) = sp.edit().putLong("last_sync", v).apply()

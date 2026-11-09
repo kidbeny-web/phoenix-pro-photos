@@ -11,9 +11,19 @@ android {
         applicationId = "fr.phoenixpro.photos"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.2.0"
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    signingConfigs {
+        // clé fixe : permet d'installer chaque nouvelle version par-dessus l'ancienne
+        create("phoenix") {
+            storeFile = rootProject.file("signature/phoenix.jks")
+            storePassword = "49080e47f06ab1f0d2263a2f"
+            keyAlias = "phoenix"
+            keyPassword = "49080e47f06ab1f0d2263a2f"
+        }
     }
 
     buildTypes {
@@ -21,7 +31,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("phoenix")
         }
     }
     compileOptions {

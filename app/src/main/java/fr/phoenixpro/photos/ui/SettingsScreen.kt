@@ -142,7 +142,7 @@ fun SettingsScreen() {
         SettingsCard("À propos") {
             Image(painterResource(R.drawable.logo_complet), contentDescription = null, modifier = Modifier.fillMaxWidth(0.6f))
             Spacer(Modifier.height(8.dp))
-            Text("Version 1.0.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Version 1.2.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

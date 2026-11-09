@@ -16,6 +16,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -199,9 +204,11 @@ fun LazyGridScope.photoSections(photos: List<Photo>, byDate: Boolean, sel: Selec
 private fun PhotoCell(p: Photo, i: Int, sel: SelectionState, onOpen: (Int) -> Unit) {
     val haptic = LocalHapticFeedback.current
     val selected = p.id in sel.ids
+    val single = LocalSort.current.cols == 1
+    val ratio = if (single && p.width > 0 && p.height > 0) (p.width.toFloat() / p.height).coerceIn(0.5f, 2.5f) else 1f
     Thumb(
         p,
-        Modifier.aspectRatio(1f).combinedClickable(
+        Modifier.aspectRatio(ratio).combinedClickable(
             onClick = { if (sel.active) sel.toggle(p.id) else onOpen(i) },
             onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); sel.toggle(p.id) },
         ),
@@ -221,14 +228,31 @@ fun PhotoGrid(
     val ids = remember(photos) { photos.map { it.id } }
     LaunchedEffect(ids) { sel.visible = ids }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(96.dp),
-        modifier = modifier.fillMaxSize(),
+        columns = GridCells.Fixed(sort.cols),
+        modifier = modifier.fillMaxSize().pinchToResize(sort),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         header?.invoke(this)
         photoSections(photos, sort.byDate, sel) { i -> viewer.open(ids, i) }
+    }
+}
+
+/** Pincer avec deux doigts pour agrandir ou réduire les photos (comme Google Photos). */
+fun Modifier.pinchToResize(sort: SortState): Modifier = pointerInput(sort) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var zoom = 1f
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.changes.count { it.pressed } >= 2) {
+                zoom *= event.calculateZoom()
+                if (zoom > 1.25f) { sort.setColumns(sort.cols - 1); zoom = 1f }
+                else if (zoom < 0.8f) { sort.setColumns(if (sort.cols >= 4) sort.cols + 2 else sort.cols + 1); zoom = 1f }
+                event.changes.forEach { it.consume() }
+            }
+        } while (event.changes.any { it.pressed })
     }
 }
 

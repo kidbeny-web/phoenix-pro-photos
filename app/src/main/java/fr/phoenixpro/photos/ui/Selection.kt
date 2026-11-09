@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.StarOutline
@@ -40,11 +41,13 @@ val StarGold = Color(0xFFFFC23D)
 /** Photos sélectionnées (appui long sur une vignette). */
 class SelectionState {
     val ids = mutableStateListOf<Long>()
+    /** Mode sélection ouvert depuis le menu, même sans photo cochée. */
+    var mode by mutableStateOf(false)
     /** Toutes les photos de l'écran affiché, pour « Tout sélectionner ». */
     var visible: List<Long> = emptyList()
-    val active: Boolean get() = ids.isNotEmpty()
+    val active: Boolean get() = mode || ids.isNotEmpty()
     fun toggle(id: Long) { if (id in ids) ids.remove(id) else ids.add(id) }
-    fun clear() = ids.clear()
+    fun clear() { ids.clear(); mode = false }
     fun selectAll() { val s = ids.toHashSet(); ids.addAll(visible.filter { it !in s }) }
 }
 
@@ -54,6 +57,13 @@ class SortState(private val prefs: Prefs) {
         private set
     val byDate: Boolean get() = key.startsWith("date")
     fun set(k: String) { key = k; prefs.sort = k }
+
+    /** Nombre de photos par ligne (pincer la galerie pour changer). */
+    var cols by mutableIntStateOf(prefs.gridColumns.coerceIn(MIN_COLS, MAX_COLS))
+        private set
+    fun setColumns(n: Int) { cols = n.coerceIn(MIN_COLS, MAX_COLS); prefs.gridColumns = cols }
+
+    companion object { const val MIN_COLS = 1; const val MAX_COLS = 7 }
 }
 
 /** Corbeille : demande la confirmation d'Android puis retire les photos. */
@@ -108,10 +118,26 @@ private fun deleteLegacy(ctx: Context, ids: List<Long>): List<Long> = ids.filter
 @Composable
 fun SortButton() {
     val sort = LocalSort.current
+    val sel = LocalSelection.current
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Outlined.Sort, "Trier") }
+        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Outlined.Sort, "Trier et afficher") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Sélectionner des photos") },
+                leadingIcon = { Icon(Icons.Outlined.CheckCircle, null) },
+                onClick = { sel.mode = true; open = false },
+            )
+            HorizontalDivider()
+            Text("Taille des photos", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            listOf(1 to "Très grande", 2 to "Grande", 3 to "Moyenne", 4 to "Petite", 6 to "Très petite").forEach { (n, label) ->
+                DropdownMenuItem(
+                    text = { Text(label, color = if (n == sort.cols) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                    onClick = { sort.setColumns(n); open = false },
+                )
+            }
+            HorizontalDivider()
             Text("Trier par", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             Db.SORTS.forEach { (k, v) ->
@@ -151,7 +177,7 @@ fun SelectionBar() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = { sel.clear() }) { Icon(Icons.Outlined.Close, "Annuler", tint = Color.White) }
-        Text("${sel.ids.size}", color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+        Text(if (sel.ids.isEmpty()) "Touchez des photos" else "${sel.ids.size}", color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         IconButton(onClick = { sel.selectAll() }) { Icon(Icons.Outlined.SelectAll, "Tout sélectionner", tint = Color.White) }
         Box {
             IconButton(onClick = { rateMenu = true }) { Icon(Icons.Filled.Star, "Noter", tint = Color.White) }
