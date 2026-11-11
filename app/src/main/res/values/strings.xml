@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Phoenix Pro Météo</string>
+    <string name="widget_desc">Météo actuelle et 5 prochains jours</string>
+</resources>

@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- rayons du soleil -->
+    <path android:strokeColor="#F08A1C" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M46,26v-5 M46,62v5 M28,44h-5 M64,44h5 M33.3,31.3l-3.5,-3.5 M58.7,31.3l3.5,-3.5 M33.3,56.7l-3.5,3.5" />
+    <!-- soleil -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M46,44m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <!-- nuage -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M42,80h34a10,10 0,0 0,1 -19.9a14,14 0,0 0,-26.6 -4.4a11,11 0,0 0,-8.4 24.3z" />
+</vector>

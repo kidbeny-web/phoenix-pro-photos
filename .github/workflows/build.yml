@@ -61,6 +61,8 @@ jobs:
 
       - name: Compiler
         if: steps.check.outputs.ok == 'true'
+        env:
+          PHOENIX_KEY_PASSWORD: ${{ secrets.PHOENIX_KEY_PASSWORD }}
         run: gradle assembleRelease --stacktrace --no-daemon
 
       - name: Renommer

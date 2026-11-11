@@ -1,0 +1,9 @@
+<resources>
+    <color name="window_bg">#FF0E1012</color>
+    <color name="launcher_bg">#FF1D63C4</color>
+    <color name="widget_bg">#EB0E1012</color>
+    <color name="widget_text">#FFF1F3F4</color>
+    <color name="widget_sub">#FFB4B9BD</color>
+    <color name="widget_accent">#FFF08A1C</color>
+    <color name="widget_rain">#FF6F9BFF</color>
+</resources>
