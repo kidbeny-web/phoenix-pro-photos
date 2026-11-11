@@ -1,0 +1,84 @@
+name: Fabriquer Phoenix Pro Météo
+
+on:
+  push:
+    branches: [meteo]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pc:
+    name: Widget PC (.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Compiler
+        run: dotnet publish windows/PhoenixProMeteo.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoenixProMeteo-exe
+          path: out/PhoenixProMeteo.exe
+
+      - name: Publier la version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete meteo-pc-derniere-version --yes --cleanup-tag || true
+          gh release create meteo-pc-derniere-version out/PhoenixProMeteo.exe --target meteo --latest=false \
+            --title "Phoenix Pro Météo — widget PC — build ${{ github.run_number }}" \
+            --notes "Widget météo pour Windows 10/11. Télécharge PhoenixProMeteo.exe et double-clique dessus (aucune installation)."
+
+  android:
+    name: Appli Android (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Projet Android présent ?
+        id: check
+        shell: bash
+        run: if [ -f app/build.gradle.kts ]; then echo "ok=true" >> $GITHUB_OUTPUT; else echo "ok=false" >> $GITHUB_OUTPUT; fi
+
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        if: steps.check.outputs.ok == 'true'
+        with:
+          gradle-version: "8.7"
+
+      - name: Compiler
+        if: steps.check.outputs.ok == 'true'
+        run: gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Renommer
+        if: steps.check.outputs.ok == 'true'
+        run: cp app/build/outputs/apk/release/app-release.apk PhoenixProMeteo.apk
+
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          name: PhoenixProMeteo-apk
+          path: PhoenixProMeteo.apk
+
+      - name: Publier la version
+        if: steps.check.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete meteo-android-derniere-version --yes --cleanup-tag || true
+          gh release create meteo-android-derniere-version PhoenixProMeteo.apk --target meteo --latest=false \
+            --title "Phoenix Pro Météo (Android) — build ${{ github.run_number }}" \
+            --notes "APK prêt à installer sur le téléphone."
