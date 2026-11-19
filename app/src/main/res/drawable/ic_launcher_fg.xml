@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- cadran du sonomètre -->
+    <path android:strokeColor="#33FFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
+        android:pathData="M34.95,65A22,22 0,1 1,73.05 65" />
+    <path android:strokeColor="#F08A1C" android:strokeWidth="6" android:strokeLineCap="round"
+        android:pathData="M34.95,65A22,22 0,0 1,65 34.95" />
+    <!-- aiguille -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M54,54L63,40.5" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+    <!-- ondes sonores -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M45,74v6 M50,71v12 M54,73v8 M58,70v14 M63,74v6" />
+</vector>
