@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- boîtier du mètre ruban -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M30,36h30a8,8 0,0 1,8 8v22a8,8 0,0 1,-8 8h-30a8,8 0,0 1,-8 -8v-22a8,8 0,0 1,8 -8z" />
+    <path android:fillColor="#1D2A4A"
+        android:pathData="M45,55m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0" />
+    <path android:fillColor="#F08A1C"
+        android:pathData="M45,55m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+    <!-- ruban -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M60,66h20v8h-20z M78,60h4v20h-4z" />
+    <path android:strokeColor="#1D2A4A" android:strokeWidth="1.4"
+        android:pathData="M64,66v4 M68,66v3 M72,66v4 M76,66v3" />
+</vector>
