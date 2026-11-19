@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- lune -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M58,30a22,22 0,1 0,20 31a17,17 0,1 1,-20 -31z" />
+    <!-- étoiles -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M70,34l1.6,3.4l3.4,1.6l-3.4,1.6l-1.6,3.4l-1.6,-3.4l-3.4,-1.6l3.4,-1.6z M78,48l1,2l2,1l-2,1l-1,2l-1,-2l-2,-1l2,-1z" />
+    <!-- ondes sonores -->
+    <path android:strokeColor="#F08A1C" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M40,76v4 M45,73v10 M50,75v6 M55,72v12 M60,75v6 M65,74v8" />
+</vector>
