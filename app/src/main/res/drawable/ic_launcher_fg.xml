@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- téléphone -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M42,30h24a5,5 0,0 1,5 5v38a5,5 0,0 1,-5 5h-24a5,5 0,0 1,-5 -5v-38a5,5 0,0 1,5 -5z" />
+    <path android:fillColor="#1D2A4A"
+        android:pathData="M41,36h26v32h-26z" />
+    <path android:fillColor="#1D2A4A"
+        android:pathData="M51,72h6a1.5,1.5 0,0 1,0 3h-6a1.5,1.5 0,0 1,0 -3z" />
+    <!-- coche de validation -->
+    <path android:strokeColor="#F08A1C" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M46,52l6,6l11,-12" />
+</vector>
