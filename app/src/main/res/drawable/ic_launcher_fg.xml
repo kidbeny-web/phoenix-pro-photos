@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- carnet -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M34,28h34a5,5 0,0 1,5 5v42a5,5 0,0 1,-5 5h-34a5,5 0,0 1,-5 -5v-42a5,5 0,0 1,5 -5z" />
+    <path android:fillColor="#AFC3F2"
+        android:pathData="M36,40h22v3h-22z M36,48h28v3h-28z M36,56h18v3h-18z" />
+    <!-- stylet -->
+    <group android:rotation="45" android:pivotX="70" android:pivotY="58">
+        <path android:fillColor="#F08A1C" android:pathData="M66,30h8v38h-8z" />
+        <path android:fillColor="#F08A1C" android:pathData="M66,68h8l-4,9z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M66,36h8v2h-8z" />
+    </group>
+</vector>
