@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- dossier -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M30,34h16l5,6h27a4,4 0,0 1,4 4v4h-56v-10a4,4 0,0 1,4 -4z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M30,46h48a4,4 0,0 1,4 4v22a4,4 0,0 1,-4 4h-48a4,4 0,0 1,-4 -4v-22a4,4 0,0 1,4 -4z" />
+    <!-- fichiers rangés -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M36,56h22v4h-22z M36,64h30v4h-30z" />
+</vector>

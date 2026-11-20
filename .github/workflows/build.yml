@@ -1,0 +1,47 @@
+name: Fabriquer Phoenix Pro Fichiers
+
+on:
+  push:
+    branches: [fichiers]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Appli Android (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      - name: Compiler
+        env:
+          PHOENIX_KEY_PASSWORD: ${{ secrets.PHOENIX_KEY_PASSWORD }}
+        run: gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Renommer
+        run: cp app/build/outputs/apk/release/app-release.apk PhoenixProFichiers.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoenixProFichiers-apk
+          path: PhoenixProFichiers.apk
+
+      - name: Publier la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete fichiers-derniere-version --yes --cleanup-tag || true
+          gh release create fichiers-derniere-version PhoenixProFichiers.apk --target fichiers --latest=false \
+            --title "Phoenix Pro Fichiers (Android) — build ${{ github.run_number }}" \
+            --notes "APK prêt à installer sur le téléphone."
