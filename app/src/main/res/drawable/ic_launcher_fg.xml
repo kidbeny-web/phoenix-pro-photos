@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- appareil photo -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M30,42h12l4,-6h16l4,6h12a5,5 0,0 1,5 5v26a5,5 0,0 1,-5 5h-48a5,5 0,0 1,-5 -5v-26a5,5 0,0 1,5 -5z" />
+    <!-- objectif -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M54,60m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M54,60m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    <!-- flash -->
+    <path android:fillColor="#F08A1C"
+        android:pathData="M73,49m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+</vector>
