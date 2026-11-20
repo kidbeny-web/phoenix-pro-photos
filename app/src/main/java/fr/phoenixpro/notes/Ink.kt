@@ -1,13 +1,11 @@
 package fr.phoenixpro.notes
 
 import android.os.SystemClock
-import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -24,7 +22,17 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import android.os.Build
+import android.view.InputDevice
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.hypot
@@ -41,6 +49,7 @@ class InkState(val note: Note) {
     var width by mutableFloatStateOf(4f)
     var fingerDraws by mutableStateOf(false)
     var stylusSeen by mutableStateOf(false)
+    var drawing by mutableStateOf(false)
     var version by mutableIntStateOf(0)
     val undo = ArrayDeque<Edit>()
     val redo = ArrayDeque<Edit>()
@@ -91,24 +100,55 @@ fun DrawScope.drawBackground(bg: String, k: Float, heightUnits: Float) {
 
 fun DrawScope.drawAll(note: Note, k: Float, dy: Float = 0f) { note.strokes.forEach { drawStroke(it, k, dy) } }
 
+/** Trait en cours : tableau qui grandit sans recopie à chaque point. */
+class LiveStroke {
+    var pts = FloatArray(4096); var n = 0
+    var tick by mutableIntStateOf(0)
+    fun add(x: Float, y: Float, p: Float, t: Float) {
+        if (n + 4 > pts.size) pts = pts.copyOf(pts.size * 2)
+        pts[n++] = x; pts[n++] = y; pts[n++] = p; pts[n++] = t
+    }
+    fun clear() { n = 0; tick++ }
+    fun snapshot() = pts.copyOf(n)
+}
+
+private fun DrawScope.drawLive(l: LiveStroke, tool: Tool, color: Int, width: Float, k: Float) {
+    val count = l.n / 4; if (count == 0) return
+    val c = Color(color); val a = l.pts
+    if (tool == Tool.HIGHLIGHT) {
+        val path = Path(); path.moveTo(a[0] * k, a[1] * k)
+        for (i in 1 until count) path.lineTo(a[i * 4] * k, a[i * 4 + 1] * k)
+        drawPath(path, c.copy(alpha = 0.35f), style = DrawStroke(width * 5f * k, cap = StrokeCap.Round, join = StrokeJoin.Round)); return
+    }
+    if (count == 1) { drawCircle(c, width * k * 0.6f, Offset(a[0] * k, a[1] * k)); return }
+    for (i in 1 until count) {
+        val w = width * k * (0.35f + 0.9f * ((a[i * 4 - 2] + a[i * 4 + 2]) / 2f))
+        drawLine(c, Offset(a[i * 4 - 4] * k, a[i * 4 - 3] * k), Offset(a[i * 4] * k, a[i * 4 + 1] * k), w, cap = StrokeCap.Round)
+    }
+}
+
 /**
  * Zone d'écriture. Stylet : écrit (bouton latéral maintenu = gomme). Doigt : fait défiler la page,
- * sauf si « écrire au doigt » est activé. La paume posée pendant l'écriture est ignorée.
+ * sauf si « écrire au doigt » est activé. Pendant l'écriture, la paume et les autres doigts sont ignorés.
+ *
+ * Deux calques : le fond et les traits terminés (redessinés seulement quand la note change),
+ * et le trait en cours (redessiné à chaque point) — l'écriture reste fluide même sur une note chargée.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun InkCanvas(st: InkState, scroll: ScrollState, onChange: () -> Unit) {
     val note = st.note
     var widthPx by remember { mutableFloatStateOf(1f) }
     val k = widthPx / PAGE_W
-    var current by remember { mutableStateOf<FloatArray?>(null) }
-    var currentTool by remember { mutableStateOf(Tool.PEN) }
-    val buf = remember { ArrayList<Float>() }
-    var activeId by remember { mutableIntStateOf(-1) }
+    val live = remember { LiveStroke() }
+    var liveTool by remember { mutableStateOf(Tool.PEN) }
     val density = LocalDensity.current
+    val view = LocalView.current
     val heightUnits = note.pages * PAGE_H
-    @Suppress("UNUSED_VARIABLE") val v = st.version
-    // Pages du PDF importé (fond), chargées en qualité écran.
+    // Points du S Pen livrés sans attendre l'image suivante : moins de retard sous la pointe.
+    DisposableEffect(view) {
+        if (Build.VERSION.SDK_INT >= 30) view.requestUnbufferedDispatch(InputDevice.SOURCE_CLASS_POINTER)
+        onDispose { }
+    }
     val pdf by produceState<List<ImageBitmap?>>(emptyList(), note.id, note.pdfPages) {
         value = withContext(Dispatchers.IO) {
             (0 until note.pdfPages).map { i ->
@@ -116,73 +156,90 @@ fun InkCanvas(st: InkState, scroll: ScrollState, onChange: () -> Unit) {
             }
         }
     }
-
-    fun addPoint(x: Float, y: Float, p: Float) {
-        buf.add(x / k); buf.add(y / k); buf.add(p.coerceIn(0.05f, 1f)); buf.add((SystemClock.uptimeMillis() % 10_000_000L).toFloat())
-    }
+    val kNow by rememberUpdatedState(k)
+    val onChangeNow by rememberUpdatedState(onChange)
 
     fun eraseAt(x: Float, y: Float) {
-        val ux = x / k; val uy = y / k
-        val hit = note.strokes.filter { s -> (0 until s.count).any { hypot(s.x(it) - ux, s.y(it) - uy) < 14f + s.width / 2 } }
-        if (hit.isNotEmpty()) { note.strokes.removeAll(hit.toSet()); st.push(Edit.Remove(hit)); onChange() }
+        val ux = x / kNow; val uy = y / kNow
+        val hit = note.strokes.filter { s -> s.minY() - 30f < uy && s.maxY() + 30f > uy && (0 until s.count).any { hypot(s.x(it) - ux, s.y(it) - uy) < 14f + s.width / 2 } }
+        if (hit.isNotEmpty()) { note.strokes.removeAll(hit.toSet()); st.push(Edit.Remove(hit)); onChangeNow() }
     }
+    fun now() = (SystemClock.uptimeMillis() % 10_000_000L).toFloat()
 
-    Canvas(
+    Box(
         Modifier.fillMaxWidth().height(with(density) { (heightUnits * k).toDp() })
             .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
-            .pointerInteropFilter { e ->
-                val idx = e.actionIndex
-                val type = e.getToolType(idx)
-                val stylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
-                if (stylus) st.stylusSeen = true
-                val draws = stylus || (st.fingerDraws && type == MotionEvent.TOOL_TYPE_FINGER)
-                when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                        if (!draws || activeId != -1) return@pointerInteropFilter stylus // le doigt laisse défiler
-                        activeId = e.getPointerId(idx)
-                        val eraserButton = type == MotionEvent.TOOL_TYPE_ERASER || (e.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
-                        currentTool = if (eraserButton) Tool.ERASER else st.tool
-                        buf.clear()
-                        if (currentTool == Tool.ERASER) eraseAt(e.getX(idx), e.getY(idx))
-                        else { addPoint(e.getX(idx), e.getY(idx), if (stylus) e.getPressure(idx) else 0.5f); current = buf.toFloatArray() }
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (activeId == -1) return@pointerInteropFilter false
-                        val pi = e.findPointerIndex(activeId); if (pi < 0) return@pointerInteropFilter true
-                        val isStylus = e.getToolType(pi) != MotionEvent.TOOL_TYPE_FINGER
-                        if (currentTool == Tool.ERASER) { eraseAt(e.getX(pi), e.getY(pi)); return@pointerInteropFilter true }
-                        for (h in 0 until e.historySize) addPoint(e.getHistoricalX(pi, h), e.getHistoricalY(pi, h), if (isStylus) e.getHistoricalPressure(pi, h) else 0.5f)
-                        addPoint(e.getX(pi), e.getY(pi), if (isStylus) e.getPressure(pi) else 0.5f)
-                        current = buf.toFloatArray()
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (activeId == -1 || e.getPointerId(idx) != activeId && e.actionMasked != MotionEvent.ACTION_CANCEL) return@pointerInteropFilter activeId != -1
-                        val pts = current
-                        if (currentTool != Tool.ERASER && pts != null && pts.isNotEmpty() && e.actionMasked != MotionEvent.ACTION_CANCEL) {
-                            val s = Stroke(currentTool, if (currentTool == Tool.HIGHLIGHT) st.color else st.color, if (currentTool == Tool.HIGHLIGHT) st.width * 5f else st.width, pts)
-                            note.strokes.add(s); st.push(Edit.Add(s))
-                            // Ajoute une page quand on écrit près du bas.
-                            if (s.maxY() > heightUnits - 200f) note.pages++
-                            onChange()
+            .pointerInput(note.id) {
+                awaitPointerEventScope {
+                    var active: PointerId? = null
+                    var lastP = 0.5f
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        for (c in ev.changes) {
+                            val stylus = c.type == PointerType.Stylus || c.type == PointerType.Eraser
+                            if (stylus && !st.stylusSeen) st.stylusSeen = true
+                            val draws = stylus || (st.fingerDraws && c.type == PointerType.Touch)
+                            val kk = kNow
+                            when {
+                                active == null && c.changedToDownIgnoreConsumed() && draws -> {
+                                    active = c.id
+                                    st.drawing = true
+                                    liveTool = if (c.type == PointerType.Eraser || ev.buttons.isSecondaryPressed) Tool.ERASER else st.tool
+                                    lastP = if (stylus) c.pressure.coerceIn(0.05f, 1f) else 0.5f
+                                    live.n = 0
+                                    if (liveTool == Tool.ERASER) eraseAt(c.position.x, c.position.y)
+                                    else live.add(c.position.x / kk, c.position.y / kk, lastP, now())
+                                    live.tick++
+                                    c.consume()
+                                }
+                                c.id == active -> {
+                                    if (c.pressed) {
+                                        if (liveTool == Tool.ERASER) eraseAt(c.position.x, c.position.y)
+                                        else {
+                                            val p = if (stylus) c.pressure.coerceIn(0.05f, 1f) else 0.5f
+                                            val hist = c.historical
+                                            hist.forEachIndexed { h, hc ->
+                                                val f = (h + 1f) / (hist.size + 1f)
+                                                live.add(hc.position.x / kk, hc.position.y / kk, lastP + (p - lastP) * f, now())
+                                            }
+                                            live.add(c.position.x / kk, c.position.y / kk, p, now())
+                                            lastP = p
+                                            live.tick++
+                                        }
+                                    } else {
+                                        if (liveTool != Tool.ERASER && live.n > 0) {
+                                            val s = Stroke(liveTool, st.color, if (liveTool == Tool.HIGHLIGHT) st.width * 5f else st.width, live.snapshot())
+                                            note.strokes.add(s); st.push(Edit.Add(s))
+                                            if (s.maxY() > note.pages * PAGE_H - 200f) note.pages++
+                                            onChangeNow()
+                                        }
+                                        live.clear(); active = null; st.drawing = false
+                                    }
+                                    c.consume()
+                                }
+                                active != null -> c.consume() // paume posée : ni trait ni défilement
+                            }
                         }
-                        current = null; activeId = -1; buf.clear()
-                        true
                     }
-                    else -> false
                 }
             },
     ) {
-        if (st.version < 0) return@Canvas // relit la version : redessine après annuler / gomme
-        val pageH = (PAGE_H * k).toInt()
-        pdf.forEachIndexed { i, img ->
-            if (img != null) drawImage(img, srcOffset = IntOffset.Zero, srcSize = IntSize(img.width, img.height),
-                dstOffset = IntOffset(0, i * pageH), dstSize = IntSize(size.width.toInt(), pageH))
+        // Calque 1 : fond + traits terminés
+        Canvas(Modifier.fillMaxSize().graphicsLayer()) {
+            if (st.version < 0) return@Canvas // relit la version : redessine après un trait, annuler, gomme
+            val pageH = (PAGE_H * k).toInt()
+            pdf.forEachIndexed { i, img ->
+                if (img != null) drawImage(img, srcOffset = IntOffset.Zero, srcSize = IntSize(img.width, img.height),
+                    dstOffset = IntOffset(0, i * pageH), dstSize = IntSize(size.width.toInt(), pageH))
+            }
+            if (note.pdfPages == 0) drawBackground(note.bg, k, heightUnits)
+            else for (p in 1 until note.pages) drawLine(Color(0x55F08A1C), Offset(0f, p * PAGE_H * k), Offset(size.width, p * PAGE_H * k), 2f)
+            drawAll(note, k)
         }
-        if (note.pdfPages == 0) drawBackground(note.bg, k, heightUnits)
-        else for (p in 1 until note.pages) drawLine(Color(0x55F08A1C), Offset(0f, p * PAGE_H * k), Offset(size.width, p * PAGE_H * k), 2f)
-        drawAll(note, k)
-        current?.let { pts -> if (pts.isNotEmpty()) drawStroke(Stroke(currentTool, st.color, if (currentTool == Tool.HIGHLIGHT) st.width * 5f else st.width, pts), k) }
+        // Calque 2 : trait en cours
+        Canvas(Modifier.fillMaxSize().graphicsLayer()) {
+            if (live.tick < 0) return@Canvas
+            if (liveTool != Tool.ERASER) drawLive(live, liveTool, st.color, st.width, k)
+        }
     }
 }

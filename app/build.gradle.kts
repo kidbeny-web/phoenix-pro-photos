@@ -11,8 +11,8 @@ android {
         applicationId = "fr.phoenixpro.notes"
         minSdk = 28
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
         // Téléphones 64 bits uniquement (tous les modèles récents) : APK beaucoup plus léger.
         ndk { abiFilters += listOf("arm64-v8a") }
     }

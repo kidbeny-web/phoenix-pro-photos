@@ -319,7 +319,7 @@ fun EditorScreen(id: Long, onClose: () -> Unit) {
             Tab(tab == 1, { tab = 1 }, text = { Text("Texte") }, icon = { Icon(Icons.Filled.Notes, null) })
         }
         if (tab == 0) {
-            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = !st.fingerDraws)) {
+            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = !st.fingerDraws && !st.drawing)) {
                 InkCanvas(st, scroll) { dirty++ }
             }
             Toolbar(st, converting, onConvert = {
