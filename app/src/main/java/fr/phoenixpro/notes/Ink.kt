@@ -11,7 +11,15 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -100,6 +108,14 @@ fun InkCanvas(st: InkState, scroll: ScrollState, onChange: () -> Unit) {
     val density = LocalDensity.current
     val heightUnits = note.pages * PAGE_H
     @Suppress("UNUSED_VARIABLE") val v = st.version
+    // Pages du PDF importé (fond), chargées en qualité écran.
+    val pdf by produceState<List<ImageBitmap?>>(emptyList(), note.id, note.pdfPages) {
+        value = withContext(Dispatchers.IO) {
+            (0 until note.pdfPages).map { i ->
+                try { BitmapFactory.decodeFile(Store.pageImage(note.id, i).path, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 })?.asImageBitmap() } catch (e: Exception) { null }
+            }
+        }
+    }
 
     fun addPoint(x: Float, y: Float, p: Float) {
         buf.add(x / k); buf.add(y / k); buf.add(p.coerceIn(0.05f, 1f)); buf.add((SystemClock.uptimeMillis() % 10_000_000L).toFloat())
@@ -159,7 +175,13 @@ fun InkCanvas(st: InkState, scroll: ScrollState, onChange: () -> Unit) {
             },
     ) {
         if (st.version < 0) return@Canvas // relit la version : redessine après annuler / gomme
-        drawBackground(note.bg, k, heightUnits)
+        val pageH = (PAGE_H * k).toInt()
+        pdf.forEachIndexed { i, img ->
+            if (img != null) drawImage(img, srcOffset = IntOffset.Zero, srcSize = IntSize(img.width, img.height),
+                dstOffset = IntOffset(0, i * pageH), dstSize = IntSize(size.width.toInt(), pageH))
+        }
+        if (note.pdfPages == 0) drawBackground(note.bg, k, heightUnits)
+        else for (p in 1 until note.pages) drawLine(Color(0x55F08A1C), Offset(0f, p * PAGE_H * k), Offset(size.width, p * PAGE_H * k), 2f)
         drawAll(note, k)
         current?.let { pts -> if (pts.isNotEmpty()) drawStroke(Stroke(currentTool, st.color, if (currentTool == Tool.HIGHLIGHT) st.width * 5f else st.width, pts), k) }
     }

@@ -10,6 +10,12 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModelIdentifier
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.Ink
 import kotlinx.coroutines.tasks.await
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.graphics.pdf.PdfRenderer
+import android.net.Uri
+import android.provider.OpenableColumns
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -49,6 +55,8 @@ class Note(
     var updated: Long = System.currentTimeMillis(),
     var pages: Int = 1,
     val strokes: MutableList<Stroke> = mutableListOf(),
+    var folder: String = "",
+    var pdfPages: Int = 0,           // pages d'un PDF importé, servant de fond
 ) {
     val isEmpty get() = title.isBlank() && text.isBlank() && strokes.isEmpty()
     fun display() = title.ifBlank { text.lineSequence().firstOrNull { it.isNotBlank() }?.take(60) ?: if (strokes.isNotEmpty()) "Note manuscrite" else "Note sans titre" }
@@ -61,7 +69,8 @@ object Store {
     fun save(n: Note) {
         n.updated = System.currentTimeMillis()
         File(dir, "${n.id}.json").writeText(JSONObject().put("id", n.id).put("title", n.title).put("text", n.text).put("bg", n.bg)
-            .put("color", n.color).put("pinned", n.pinned).put("updated", n.updated).put("pages", n.pages).toString())
+            .put("color", n.color).put("pinned", n.pinned).put("updated", n.updated).put("pages", n.pages)
+            .put("folder", n.folder).put("pdfPages", n.pdfPages).toString())
         val tmp = File(dir, "${n.id}.ink.tmp")
         DataOutputStream(tmp.outputStream().buffered()).use { o ->
             o.writeInt(1); o.writeInt(n.strokes.size)
@@ -73,7 +82,8 @@ object Store {
     fun load(id: Long, withInk: Boolean = true): Note? = try {
         val o = JSONObject(File(dir, "$id.json").readText())
         val n = Note(o.getLong("id"), o.optString("title"), o.optString("text"), o.optString("bg", "lignes"), o.optInt("color"),
-            o.optBoolean("pinned"), o.optLong("updated"), o.optInt("pages", 1))
+            o.optBoolean("pinned"), o.optLong("updated"), o.optInt("pages", 1),
+            folder = o.optString("folder"), pdfPages = o.optInt("pdfPages"))
         val ink = File(dir, "$id.ink")
         if (withInk && ink.exists()) DataInputStream(ink.inputStream().buffered()).use { i ->
             i.readInt(); repeat(i.readInt()) {
@@ -89,7 +99,60 @@ object Store {
         .mapNotNull { load(it.nameWithoutExtension.toLongOrNull() ?: return@mapNotNull null) }
         .sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updated })
 
-    fun delete(id: Long) { File(dir, "$id.json").delete(); File(dir, "$id.ink").delete() }
+    fun delete(id: Long) {
+        File(dir, "$id.json").delete(); File(dir, "$id.ink").delete()
+        dir.listFiles { f -> f.name.startsWith("${id}_p") }?.forEach { it.delete() }
+    }
+
+    /** Image de la page n d'un PDF importé (fond de la note). */
+    fun pageImage(id: Long, n: Int) = File(dir, "${id}_p$n.jpg")
+
+    // ---- dossiers
+    private val foldersFile get() = File(dir, "dossiers.json")
+    var folders: List<String>
+        get() = try { val a = JSONArray(foldersFile.readText()); (0 until a.length()).map { a.getString(it) } } catch (e: Exception) { emptyList() }
+        set(v) = foldersFile.writeText(JSONArray(v.distinct()).toString())
+
+    fun renameFolder(old: String, new: String) {
+        folders = folders.map { if (it == old) new else it }
+        all().filter { it.folder == old }.forEach { it.folder = new; saveKeepDate(it) }
+    }
+
+    fun deleteFolder(name: String) {
+        folders = folders - name
+        all().filter { it.folder == name }.forEach { it.folder = ""; saveKeepDate(it) }
+    }
+
+    private fun saveKeepDate(n: Note) { val d = n.updated; save(n); n.updated = d; File(dir, "${n.id}.json").let { f -> f.writeText(JSONObject(f.readText()).put("updated", d).toString()) } }
+
+    /** Importe un PDF : chaque page devient l'image de fond d'une page de la note (60 pages au plus). */
+    fun importPdf(ctx: Context, uri: Uri, folder: String): Note? {
+        val pfd = ctx.contentResolver.openFileDescriptor(uri, "r") ?: return null
+        var name = "Document PDF"
+        try {
+            ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0)?.removeSuffix(".pdf")?.removeSuffix(".PDF") ?: name }
+        } catch (_: Exception) { }
+        val r = PdfRenderer(pfd)
+        try {
+            val n = Note(System.currentTimeMillis(), title = name, bg = "blanc", folder = folder)
+            val count = minOf(r.pageCount, 60)
+            val w = 1240; val h = (w * PAGE_H / PAGE_W).toInt()
+            for (i in 0 until count) {
+                val page = r.openPage(i)
+                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                bmp.eraseColor(android.graphics.Color.WHITE)
+                val s = minOf(w.toFloat() / page.width, h.toFloat() / page.height)
+                val m = Matrix().apply { postScale(s, s); postTranslate((w - page.width * s) / 2, (h - page.height * s) / 2) }
+                page.render(bmp, null, m, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                page.close()
+                pageImage(n.id, i).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+                bmp.recycle()
+            }
+            n.pdfPages = count; n.pages = count
+            save(n)
+            return n
+        } finally { r.close(); pfd.close() }
+    }
 }
 
 /** Reconnaissance de l'écriture (français), entièrement sur le téléphone après un téléchargement unique. */

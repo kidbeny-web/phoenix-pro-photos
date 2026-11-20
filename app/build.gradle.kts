@@ -11,8 +11,10 @@ android {
         applicationId = "fr.phoenixpro.notes"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+        // Téléphones 64 bits uniquement (tous les modèles récents) : APK beaucoup plus léger.
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     // Mot de passe de la clé Phoenix Pro : lu depuis le secret GitHub PHOENIX_KEY_PASSWORD (jamais écrit dans le code).
@@ -32,7 +34,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keyPassword != null) signingConfigs.getByName("phoenix") else signingConfigs.getByName("debug")
         }
     }

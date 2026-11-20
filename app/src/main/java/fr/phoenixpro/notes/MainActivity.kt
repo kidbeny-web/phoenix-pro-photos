@@ -9,6 +9,10 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
@@ -65,7 +69,8 @@ val Green = Color(0xFF5FD6A8)
 val OnOrange = Color(0xFF1A1206)
 
 /** Couleurs d'encre (claires pour le fond sombre). */
-val INKS = listOf(0xFFF1F3F4, 0xFFF08A1C, 0xFF6F9BFF, 0xFF5FD6A8, 0xFFFF5A5F, 0xFFFFD84D, 0xFFB48CF0).map { it.toInt() }
+val INK_DARK = 0xFF1A1C1F.toInt()
+val INKS = listOf(0xFFF1F3F4, 0xFF1A1C1F, 0xFFF08A1C, 0xFF6F9BFF, 0xFF5FD6A8, 0xFFFF5A5F, 0xFFFFD84D, 0xFFB48CF0).map { it.toInt() }
 /** Couleurs d'étiquette des notes (0 = aucune). */
 val LABELS = listOf(Color.Transparent, Orange, Blue, Green, Red, Color(0xFFFFD84D), Color(0xFFB48CF0))
 
@@ -94,9 +99,8 @@ fun Root() {
     var tick by remember { mutableIntStateOf(0) }
     Box(Modifier.fillMaxSize().background(Bg).safeDrawingPadding()) {
         val id = open
-        if (id == null) ListScreen(tick, onOpen = { open = it }, onNew = { handwriting ->
-            val n = Note(System.currentTimeMillis(), bg = if (handwriting) "lignes" else "blanc")
-            if (!handwriting) n.text = ""
+        if (id == null) ListScreen(tick, onOpen = { open = it }, onNew = { handwriting, folder ->
+            val n = Note(System.currentTimeMillis(), bg = if (handwriting) "lignes" else "blanc", folder = folder)
             Store.save(n); open = n.id
         })
         else EditorScreen(id, onClose = { open = null; tick++ })
@@ -106,9 +110,27 @@ fun Root() {
 // ---------------------------------------------------------------- liste des notes
 
 @Composable
-fun ListScreen(tick: Int, onOpen: (Long) -> Unit, onNew: (Boolean) -> Unit) {
+fun ListScreen(tick: Int, onOpen: (Long) -> Unit, onNew: (Boolean, String) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var q by remember { mutableStateOf("") }
-    val notes by produceState<List<Note>?>(null, tick) { value = withContext(Dispatchers.IO) { Store.all() } }
+    var local by remember { mutableIntStateOf(0) }
+    var folder by remember { mutableStateOf<String?>(null) } // null = toutes les notes
+    var folders by remember(local) { mutableStateOf(Store.folders) }
+    var newFolder by remember { mutableStateOf(false) }
+    var editFolder by remember { mutableStateOf<String?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    val notes by produceState<List<Note>?>(null, tick, local) { value = withContext(Dispatchers.IO) { Store.all() } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importing = true
+            scope.launch {
+                val n = withContext(Dispatchers.IO) { try { Store.importPdf(ctx, uri, folder ?: "") } catch (e: Exception) { null } }
+                importing = false
+                if (n == null) Toast.makeText(ctx, "Ce PDF ne peut pas être ouvert (protégé ou abîmé)", Toast.LENGTH_LONG).show() else onOpen(n.id)
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(top = 8.dp)) {
             Text("Notes", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextC)
@@ -116,7 +138,17 @@ fun ListScreen(tick: Int, onOpen: (Long) -> Unit, onNew: (Boolean) -> Unit) {
         }
         OutlinedTextField(q, { q = it }, placeholder = { Text("Rechercher dans les notes") }, singleLine = true,
             leadingIcon = { Icon(Icons.Filled.Search, null) }, shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp))
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+        // Dossiers : appui long pour renommer ou supprimer
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val all = notes ?: emptyList()
+            FolderChip("Toutes (${all.size})", folder == null, onClick = { folder = null }, onLong = null)
+            folders.forEach { f ->
+                FolderChip("$f (${all.count { it.folder == f }})", folder == f, onClick = { folder = f }, onLong = { editFolder = f })
+            }
+            FolderChip("+ Dossier", false, onClick = { newFolder = true }, onLong = null)
+        }
+        if (importing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Orange)
         Box(Modifier.weight(1f)) {
             val list = notes
             when {
@@ -128,7 +160,8 @@ fun ListScreen(tick: Int, onOpen: (Long) -> Unit, onNew: (Boolean) -> Unit) {
                 }
                 else -> {
                     val s = q.trim().lowercase()
-                    val shown = if (s.isEmpty()) list else list.filter { "${it.title} ${it.text}".lowercase().contains(s) }
+                    val inFolder = if (folder == null) list else list.filter { it.folder == folder }
+                    val shown = if (s.isEmpty()) inFolder else inFolder.filter { "${it.title} ${it.text}".lowercase().contains(s) }
                     LazyVerticalGrid(GridCells.Adaptive(160.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 90.dp)) {
                         items(shown, key = { it.id }) { n -> NoteCard(n) { onOpen(n.id) } }
@@ -136,12 +169,47 @@ fun ListScreen(tick: Int, onOpen: (Long) -> Unit, onNew: (Boolean) -> Unit) {
                 }
             }
             Row(Modifier.align(Alignment.BottomEnd).padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SmallFloatingActionButton(onClick = { onNew(false) }, containerColor = Card2, contentColor = TextC) { Icon(Icons.Filled.Keyboard, "Note au clavier") }
-                ExtendedFloatingActionButton(onClick = { onNew(true) }, containerColor = Orange, contentColor = OnOrange,
+                SmallFloatingActionButton(onClick = { picker.launch(arrayOf("application/pdf")) }, containerColor = Card2, contentColor = TextC) { Icon(Icons.Filled.PictureAsPdf, "Annoter un PDF") }
+                SmallFloatingActionButton(onClick = { onNew(false, folder ?: "") }, containerColor = Card2, contentColor = TextC) { Icon(Icons.Filled.Keyboard, "Note au clavier") }
+                ExtendedFloatingActionButton(onClick = { onNew(true, folder ?: "") }, containerColor = Orange, contentColor = OnOrange,
                     icon = { Icon(Icons.Filled.Draw, null) }, text = { Text("Écrire", fontWeight = FontWeight.Bold) })
             }
         }
     }
+    if (newFolder) AskName("Nouveau dossier", "") { n -> newFolder = false; if (!n.isNullOrBlank()) { Store.folders = Store.folders + n; folder = n; local++ } }
+    editFolder?.let { f ->
+        var rename by remember { mutableStateOf(false) }
+        if (rename) AskName("Renommer le dossier", f) { n -> rename = false; editFolder = null; if (!n.isNullOrBlank() && n != f) { Store.renameFolder(f, n); if (folder == f) folder = n; local++ } }
+        else AlertDialog(
+            onDismissRequest = { editFolder = null }, containerColor = Card2, title = { Text("Dossier « $f »") },
+            text = { Text("Supprimer le dossier ne supprime pas ses notes : elles reviennent dans « Toutes ».") },
+            confirmButton = { TextButton(onClick = { rename = true }) { Text("Renommer", color = Orange) } },
+            dismissButton = { TextButton(onClick = { Store.deleteFolder(f); if (folder == f) folder = null; editFolder = null; local++ }) { Text("Supprimer", color = Red) } },
+        )
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun FolderChip(text: String, on: Boolean, onClick: () -> Unit, onLong: (() -> Unit)?) {
+    Box(Modifier.clip(RoundedCornerShape(50)).background(if (on) Orange else Card2)
+        .combinedClickable(onClick = onClick, onLongClick = onLong).padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onLong != null) { Icon(Icons.Filled.Folder, null, tint = if (on) OnOrange else Orange, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
+            Text(text, color = if (on) OnOrange else TextC, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+fun AskName(title: String, initial: String, onDone: (String?) -> Unit) {
+    var v by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) }, containerColor = Card2, title = { Text(title) },
+        text = { OutlinedTextField(v, { v = it }, singleLine = true, placeholder = { Text("Ex. Travail, Perso, CSE") }, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { TextButton(onClick = { onDone(v.trim()) }) { Text("OK", color = Orange, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Annuler", color = Muted) } },
+    )
 }
 
 @Composable
@@ -157,7 +225,15 @@ fun NoteCard(n: Note, onClick: () -> Unit) {
         }
         Spacer(Modifier.height(6.dp))
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(10.dp))) {
-            if (n.strokes.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
+            if (n.pdfPages > 0) {
+                val img by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, n.id) {
+                    value = withContext(Dispatchers.IO) { android.graphics.BitmapFactory.decodeFile(Store.pageImage(n.id, 0).path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 })?.asImageBitmap() }
+                }
+                img?.let { androidx.compose.foundation.Image(it, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize()) }
+                Row(Modifier.align(Alignment.BottomStart).padding(4.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xCC0E1012)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    Text("PDF · ${n.pdfPages} p.", color = Orange, fontSize = 11.sp)
+                }
+            } else if (n.strokes.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
                 val top = n.strokes.minOf { it.minY() }.coerceAtLeast(0f) - 20f
                 val k = size.width / PAGE_W
                 drawAll(n, k, -top * k)
@@ -174,7 +250,16 @@ fun EditorScreen(id: Long, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val note = remember(id) { Store.load(id) ?: Note(id) }
-    val st = remember(id) { InkState(note) }
+    val st = remember(id) { InkState(note).also { if (note.pdfPages > 0) it.color = INK_DARK } }
+    var chooseFolder by remember { mutableStateOf(false) }
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try { val f = buildPdf(ctx, note); ctx.contentResolver.openOutputStream(uri)?.use { o -> f.inputStream().use { it.copyTo(o) } }; true } catch (e: Exception) { false }
+            }
+            Toast.makeText(ctx, if (ok) "PDF enregistré" else "Enregistrement impossible", Toast.LENGTH_SHORT).show()
+        }
+    }
     var tab by remember { mutableIntStateOf(if (note.strokes.isEmpty() && note.text.isNotEmpty() || note.bg == "blanc" && note.strokes.isEmpty()) 1 else 0) }
     var title by remember { mutableStateOf(note.title) }
     var text by remember { mutableStateOf(note.text) }
@@ -206,7 +291,9 @@ fun EditorScreen(id: Long, onClose: () -> Unit) {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Plus", tint = TextC) }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text(if (note.pinned) "Désépingler" else "Épingler") }, onClick = { note.pinned = !note.pinned; dirty++; menu = false })
+                    DropdownMenuItem(text = { Text("Enregistrer en PDF dans le téléphone…") }, onClick = { menu = false; save(); saver.launch(pdfName(note)) })
                     DropdownMenuItem(text = { Text("Partager en PDF") }, onClick = { menu = false; save(); scope.launch { sharePdf(ctx, note) } })
+                    DropdownMenuItem(text = { Text("Dossier : " + note.folder.ifBlank { "aucun" }) }, onClick = { menu = false; chooseFolder = true })
                     DropdownMenuItem(text = { Text("Copier le texte") }, onClick = {
                         menu = false
                         val cb = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -258,6 +345,26 @@ fun EditorScreen(id: Long, onClose: () -> Unit) {
             )
         }
     }
+    if (chooseFolder) {
+        var adding by remember { mutableStateOf(false) }
+        if (adding) AskName("Nouveau dossier", "") { n -> adding = false; if (!n.isNullOrBlank()) { Store.folders = Store.folders + n; note.folder = n; dirty++; chooseFolder = false } }
+        else AlertDialog(
+            onDismissRequest = { chooseFolder = false }, containerColor = Card2, title = { Text("Ranger dans un dossier") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    (listOf("") + Store.folders).forEach { f ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { note.folder = f; dirty++; chooseFolder = false }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (f.isEmpty()) Icons.Filled.FolderOff else Icons.Filled.Folder, null, tint = Orange); Spacer(Modifier.width(10.dp))
+                            Text(f.ifEmpty { "Aucun dossier" }, color = TextC, modifier = Modifier.weight(1f))
+                            if (note.folder == f) Icon(Icons.Filled.Check, null, tint = Orange)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { adding = true }) { Text("+ Nouveau dossier", color = Orange) } },
+            dismissButton = { TextButton(onClick = { chooseFolder = false }) { Text("Fermer", color = Muted) } },
+        )
+    }
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false }, containerColor = Card2,
         title = { Text("Supprimer cette note ?") }, text = { Text("Elle sera effacée définitivement.") },
@@ -308,8 +415,18 @@ fun ToolButton(icon: ImageVector, desc: String, on: Boolean, onClick: () -> Unit
 
 // ---------------------------------------------------------------- export PDF
 
+fun pdfName(n: Note) = (n.display().replace(Regex("[^A-Za-z0-9À-ÿ -]"), "").trim().ifBlank { "note" }) + ".pdf"
+
 suspend fun sharePdf(ctx: Context, n: Note) {
-    val f = withContext(Dispatchers.IO) {
+    val f = withContext(Dispatchers.IO) { buildPdf(ctx, n) }
+    val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Partager la note"))
+}
+
+fun buildPdf(ctx: Context, n: Note): File = run {
+    run {
         val doc = PdfDocument()
         val w = 595; val h = 842; val m = 40f
         var no = 0
@@ -335,12 +452,15 @@ suspend fun sharePdf(ctx: Context, n: Note) {
             doc.finishPage(p)
         }
         // Pages manuscrites (encre sombre sur fond blanc pour l'impression)
-        if (n.strokes.isNotEmpty()) {
-            val lastY = n.strokes.maxOf { it.maxY() }
-            val pages = (lastY / PAGE_H).toInt() + 1
+        if (n.strokes.isNotEmpty() || n.pdfPages > 0) {
+            val lastY = n.strokes.maxOfOrNull { it.maxY() } ?: 0f
+            val pages = maxOf((lastY / PAGE_H).toInt() + 1, n.pdfPages)
             val k = w / PAGE_W
             for (pg in 0 until pages) {
                 val p = page(); val c = p.canvas
+                if (pg < n.pdfPages) android.graphics.BitmapFactory.decodeFile(Store.pageImage(n.id, pg).path)?.let { b ->
+                    c.drawBitmap(b, null, android.graphics.RectF(0f, 0f, w.toFloat(), h.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG)); b.recycle()
+                }
                 val paint = Paint().apply { isAntiAlias = true; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; style = Paint.Style.STROKE }
                 n.strokes.forEach { s ->
                     if (s.maxY() < pg * PAGE_H || s.minY() > (pg + 1) * PAGE_H) return@forEach
@@ -357,11 +477,8 @@ suspend fun sharePdf(ctx: Context, n: Note) {
         }
         if (no == 0) doc.finishPage(page())
         val dir = File(ctx.cacheDir, "export").apply { mkdirs() }
-        val out = File(dir, (n.display().replace(Regex("[^A-Za-z0-9À-ÿ -]"), "").trim().ifBlank { "note" }) + ".pdf")
-        out.outputStream().use { doc.writeTo(it) }; doc.close(); out
+        val out = File(dir, pdfName(n))
+        out.outputStream().use { doc.writeTo(it) }; doc.close()
+        out
     }
-    val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
-    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-        type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Partager la note"))
 }
