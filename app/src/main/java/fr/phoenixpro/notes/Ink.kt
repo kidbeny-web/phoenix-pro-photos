@@ -134,6 +134,7 @@ private fun DrawScope.drawLive(l: LiveStroke, tool: Tool, color: Int, width: Flo
  * Deux calques : le fond et les traits terminés (redessinés seulement quand la note change),
  * et le trait en cours (redessiné à chaque point) — l'écriture reste fluide même sur une note chargée.
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun InkCanvas(st: InkState, scroll: ScrollState, onChange: () -> Unit) {
     val note = st.note
