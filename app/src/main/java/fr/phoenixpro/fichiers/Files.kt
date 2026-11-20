@@ -235,4 +235,67 @@ object Fs {
         val paths = files.flatMap { if (it.isDirectory) it.walkTopDown().filter { f -> f.isFile }.map { f -> f.absolutePath }.toList() else listOf(it.absolutePath) }
         if (paths.isNotEmpty()) MediaScannerConnection.scanFile(ctx, paths.take(2000).toTypedArray(), null, null)
     }
+
+    // ---- création de fichiers
+
+    val TEXT_EXT = setOf("txt", "md", "csv", "json", "log", "xml", "ini", "conf", "html", "htm", "kt", "java", "py", "js", "css", "srt", "properties", "yml", "yaml")
+    fun isText(f: File) = f.isFile && ext(f) in TEXT_EXT && f.length() < 2_000_000
+
+    val documents: File get() = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).apply { mkdirs() }
+
+    /** Assemble des images en PDF : une page A4 par image, ajustée et centrée. */
+    fun imagesToPdf(images: List<File>, out: File): File {
+        val doc = android.graphics.pdf.PdfDocument()
+        try {
+            images.forEachIndexed { i, f ->
+                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(f.path, o)
+                var sample = 1
+                while (maxOf(o.outWidth, o.outHeight) / sample > 2400) sample *= 2
+                var bmp = android.graphics.BitmapFactory.decodeFile(f.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return@forEachIndexed
+                val rot = try {
+                    when (android.media.ExifInterface(f.path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                        6 -> 90f; 3 -> 180f; 8 -> 270f; else -> 0f
+                    }
+                } catch (e: Exception) { 0f }
+                if (rot != 0f) bmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(rot) }, true)
+                val landscape = bmp.width > bmp.height
+                val w = if (landscape) 842 else 595; val h = if (landscape) 595 else 842; val m = 24f
+                val page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(w, h, i + 1).create())
+                val s = minOf((w - 2 * m) / bmp.width, (h - 2 * m) / bmp.height)
+                val dw = bmp.width * s; val dh = bmp.height * s
+                page.canvas.drawColor(android.graphics.Color.WHITE)
+                page.canvas.drawBitmap(bmp, null, android.graphics.RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+                doc.finishPage(page)
+                bmp.recycle()
+            }
+            out.outputStream().use { doc.writeTo(it) }
+        } finally { doc.close() }
+        return out
+    }
+
+    /** Convertit un texte en PDF A4 (retour à la ligne automatique). */
+    fun textToPdf(title: String, text: String, out: File): File {
+        val doc = android.graphics.pdf.PdfDocument()
+        val w = 595; val h = 842; val m = 48f
+        val tp = android.graphics.Paint().apply { textSize = 16f; isFakeBoldText = true; isAntiAlias = true; color = android.graphics.Color.rgb(20, 22, 25) }
+        val bp = android.graphics.Paint().apply { textSize = 11f; isAntiAlias = true; color = android.graphics.Color.rgb(30, 32, 36) }
+        var no = 0
+        var page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(w, h, ++no).create())
+        var y = m + 16
+        page.canvas.drawText(title, m, y, tp); y += 28
+        for (para in text.split("\n")) {
+            var rest = para
+            do {
+                var n = bp.breakText(rest, true, w - 2 * m, null)
+                if (n < rest.length) { val sp = rest.lastIndexOf(' ', n); if (sp > 0) n = sp + 1 }
+                if (y > h - m) { doc.finishPage(page); page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(w, h, ++no).create()); y = m + 11 }
+                page.canvas.drawText(rest.substring(0, n).trimEnd(), m, y, bp); y += 15
+                rest = rest.substring(n)
+            } while (rest.isNotEmpty())
+        }
+        doc.finishPage(page)
+        try { out.outputStream().use { doc.writeTo(it) } } finally { doc.close() }
+        return out
+    }
 }

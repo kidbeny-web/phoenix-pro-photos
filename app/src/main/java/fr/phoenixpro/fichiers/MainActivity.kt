@@ -93,7 +93,11 @@ sealed class Screen {
     data object Big : Screen()
     data object Trash : Screen()
     data object Search : Screen()
+    data class Edit(val file: File) : Screen()
 }
+
+/** Ouvre un texte dans l'éditeur intégré, le reste dans l'appli adaptée. */
+fun openAny(ctx: Context, f: File, go: (Screen) -> Unit) { if (Fs.isText(f)) go(Screen.Edit(f)) else openFile(ctx, f) }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -268,6 +272,7 @@ fun App() {
         Screen.Big -> ListScreen("Gros fichiers", tick, ops, onClip = { clip = it }, go = ::go, back = ::back, sub = "Plus de 50 Mo, du plus lourd au plus léger") { Fs.big(ctx) }
         Screen.Trash -> TrashScreen(tick, ops, ::back)
         Screen.Search -> SearchScreen(ops, onClip = { clip = it }, go = ::go, back = ::back)
+        is Screen.Edit -> EditorScreen(s.file, ops, ::back)
     }
 }
 
@@ -348,7 +353,7 @@ fun HomeScreen(tick: Int, go: (Screen) -> Unit) {
         if (recent.isNotEmpty()) Panel {
             Text("Derniers fichiers", color = TextC, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            recent.forEach { f -> FileRow(f, false, true, onClick = { openFile(ctx, f) }, onLong = {}) }
+            recent.forEach { f -> FileRow(f, false, true, onClick = { openAny(ctx, f, go) }, onLong = {}) }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -370,6 +375,8 @@ fun SelectionBar(sel: List<File>, ops: Ops, onClip: (Clip) -> Unit, clear: () ->
     var rename by remember { mutableStateOf(false) }
     var zipName by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
+    var pdfName by remember { mutableStateOf(false) }
+    val allImages = sel.isNotEmpty() && sel.all { it.isFile && catOf(it) == Cat.IMAGES }
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(Card2).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = clear) { Icon(Icons.Filled.Close, "Annuler la sélection", tint = TextC) }
         Text("${sel.size}", color = TextC, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -378,6 +385,7 @@ fun SelectionBar(sel: List<File>, ops: Ops, onClip: (Clip) -> Unit, clear: () ->
         IconButton(onClick = { onClip(Clip(sel, true)); clear(); Toast.makeText(ctx, "Coupé : choisissez le dossier puis « Déplacer ici »", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Filled.ContentCut, "Couper", tint = TextC) }
         if (sel.size == 1) IconButton(onClick = { rename = true }) { Icon(Icons.Filled.Edit, "Renommer", tint = TextC) }
         IconButton(onClick = { shareFiles(ctx, sel) }) { Icon(Icons.Filled.Share, "Partager", tint = TextC) }
+        if (allImages) IconButton(onClick = { pdfName = true }) { Icon(Icons.Filled.PictureAsPdf, "Créer un PDF", tint = Orange) }
         if (extraDir != null) IconButton(onClick = { zipName = true }) { Icon(Icons.Filled.FolderZip, "Compresser", tint = TextC) }
         IconButton(onClick = { confirm = true }) { Icon(Icons.Filled.Delete, "Supprimer", tint = Red) }
     }
@@ -388,6 +396,13 @@ fun SelectionBar(sel: List<File>, ops: Ops, onClip: (Clip) -> Unit, clear: () ->
     if (zipName && extraDir != null) AskText("Nom de l'archive", if (sel.size == 1) sel[0].nameWithoutExtension else "archive", "Compresser") { n ->
         zipName = false
         if (!n.isNullOrBlank()) { val files = sel.toList(); clear(); scope.launch { ops.run("Compression…", "Archive créée") { val z = Fs.freeName(extraDir, "$n.zip"); Fs.zip(files, z); listOf(z) } } }
+    }
+    if (pdfName) AskText("Créer un PDF (${sel.size} page${if (sel.size > 1) "s" else ""})", if (sel.size == 1) sel[0].nameWithoutExtension else "Document", "Créer") { n ->
+        pdfName = false
+        if (!n.isNullOrBlank()) {
+            val files = sel.toList(); val target = extraDir ?: Fs.documents; clear()
+            scope.launch { ops.run("Création du PDF…", "PDF créé dans ${target.name}") { listOf(Fs.imagesToPdf(files, Fs.freeName(target, "$n.pdf"))) } }
+        }
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false }, containerColor = Card2,
@@ -413,13 +428,21 @@ fun BrowseScreen(dir: File, tick: Int, clip: Clip?, ops: Ops, onClip: (Clip?) ->
     var sort by remember { mutableStateOf("nom") }
     var menu by remember { mutableStateOf(false) }
     var newFolder by remember { mutableStateOf(false) }
+    var addMenu by remember { mutableStateOf(false) }
+    var newText by remember { mutableStateOf(false) }
     val sel = remember(dir) { mutableStateListOf<File>() }
     val items by produceState(emptyList<File>(), dir, tick, hidden, sort) { value = withContext(Dispatchers.IO) { Fs.list(dir, hidden, sort) } }
     BackHandler(enabled = sel.isNotEmpty()) { sel.clear() }
     val title = if (dir == Fs.primary) "Mémoire interne" else dir.name
     Column(Modifier.fillMaxSize()) {
         if (sel.isEmpty()) TopBar(title, dir.path.removePrefix(Fs.primary.path).ifBlank { "/" }, back) {
-            IconButton(onClick = { newFolder = true }) { Icon(Icons.Filled.CreateNewFolder, "Nouveau dossier", tint = TextC) }
+            Box {
+                IconButton(onClick = { addMenu = true }) { Icon(Icons.Filled.AddCircle, "Créer", tint = Orange) }
+                DropdownMenu(addMenu, { addMenu = false }) {
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null, tint = Orange) }, text = { Text("Nouveau dossier") }, onClick = { addMenu = false; newFolder = true })
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.NoteAdd, null, tint = Orange) }, text = { Text("Nouveau fichier texte") }, onClick = { addMenu = false; newText = true })
+                }
+            }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Sort, "Trier", tint = TextC) }
                 DropdownMenu(menu, { menu = false }) {
@@ -440,7 +463,7 @@ fun BrowseScreen(dir: File, tick: Int, clip: Clip?, ops: Ops, onClip: (Clip?) ->
                             sel.isNotEmpty() -> if (f in sel) sel.remove(f) else sel.add(f)
                             f.isDirectory -> go(Screen.Browse(f))
                             ext(f) == "zip" -> scope.launch { ops.run("Extraction…", "Archive extraite") { listOf(Fs.unzip(f, dir)) } }
-                            else -> openFile(ctx, f)
+                            else -> openAny(ctx, f, go)
                         }
                     }, onLong = { if (f in sel) sel.remove(f) else sel.add(f) })
                 }
@@ -460,6 +483,13 @@ fun BrowseScreen(dir: File, tick: Int, clip: Clip?, ops: Ops, onClip: (Clip?) ->
     if (newFolder) AskText("Nouveau dossier", "Nouveau dossier", "Créer") { n ->
         newFolder = false
         if (!n.isNullOrBlank()) { val d = Fs.freeName(dir, n); if (d.mkdirs()) scope.launch { ops.run("", "Dossier créé") { emptyList() } } else Toast.makeText(ctx, "Création impossible", Toast.LENGTH_SHORT).show() }
+    }
+    if (newText) AskText("Nouveau fichier texte", "Note.txt", "Créer") { n ->
+        newText = false
+        if (!n.isNullOrBlank()) {
+            val f = Fs.freeName(dir, if (n.contains('.')) n else "$n.txt")
+            try { f.writeText(""); go(Screen.Edit(f)) } catch (e: Exception) { Toast.makeText(ctx, "Création impossible", Toast.LENGTH_SHORT).show() }
+        }
     }
 }
 
@@ -483,7 +513,7 @@ fun ListScreen(title: String, tick: Int, ops: Ops, onClip: (Clip?) -> Unit, go: 
             else -> LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                 items(list, key = { it.path }) { f ->
                     FileRow(f, f in sel, showPath = true,
-                        onClick = { if (sel.isNotEmpty()) { if (f in sel) sel.remove(f) else sel.add(f) } else openFile(ctx, f) },
+                        onClick = { if (sel.isNotEmpty()) { if (f in sel) sel.remove(f) else sel.add(f) } else openAny(ctx, f, go) },
                         onLong = { if (f in sel) sel.remove(f) else sel.add(f) })
                 }
             }
@@ -525,7 +555,7 @@ fun SearchScreen(ops: Ops, onClip: (Clip?) -> Unit, go: (Screen) -> Unit, back: 
         else if (results.isNotEmpty()) Text("${results.size} résultat${if (results.size > 1) "s" else ""}${if (results.size >= 400) " (les 400 premiers)" else ""}", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(16.dp, 10.dp))
         LazyColumn(contentPadding = PaddingValues(horizontal = 8.dp)) {
             items(results, key = { it.path }) { f ->
-                FileRow(f, false, showPath = true, onClick = { if (f.isDirectory) go(Screen.Browse(f)) else openFile(ctx, f) }, onLong = { f.parentFile?.let { go(Screen.Browse(it)) } })
+                FileRow(f, false, showPath = true, onClick = { if (f.isDirectory) go(Screen.Browse(f)) else openAny(ctx, f, go) }, onLong = { f.parentFile?.let { go(Screen.Browse(it)) } })
             }
         }
     }
@@ -569,5 +599,64 @@ fun TrashScreen(tick: Int, ops: Ops, back: () -> Unit) {
         title = { Text("Vider la corbeille ?") }, text = { Text("Tous ces fichiers seront supprimés définitivement.") },
         confirmButton = { TextButton(onClick = { confirmEmpty = false; val all = l ?: emptyList(); scope.launch { ops.run("Suppression…", "Corbeille vidée") { all.forEach { Fs.purge(it) }; emptyList() } } }) { Text("Vider", color = Red) } },
         dismissButton = { TextButton(onClick = { confirmEmpty = false }) { Text("Annuler") } },
+    )
+}
+
+
+// ---------------------------------------------------------------- éditeur de texte intégré
+
+@Composable
+fun EditorScreen(file: File, ops: Ops, back: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var text by remember(file) { mutableStateOf<String?>(null) }
+    var saved by remember(file) { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }
+    var askLeave by remember { mutableStateOf(false) }
+    LaunchedEffect(file) { val t = withContext(Dispatchers.IO) { try { file.readText() } catch (e: Exception) { "" } }; text = t; saved = t }
+    val changed = text != null && text != saved
+    fun save(then: () -> Unit = {}) {
+        val t = text ?: return
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) { try { file.writeText(t); true } catch (e: Exception) { false } }
+            if (ok) { saved = t; withContext(Dispatchers.IO) { Fs.rescan(ctx, listOf(file)) }; Toast.makeText(ctx, "Enregistré", Toast.LENGTH_SHORT).show(); then() }
+            else Toast.makeText(ctx, "Enregistrement impossible", Toast.LENGTH_SHORT).show()
+        }
+    }
+    BackHandler { if (changed) askLeave = true else back() }
+    Column(Modifier.fillMaxSize()) {
+        TopBar(file.name, if (changed) "Modifié · non enregistré" else file.parentFile?.name ?: "", { if (changed) askLeave = true else back() }) {
+            IconButton(onClick = { save() }, enabled = changed) { Icon(Icons.Filled.Save, "Enregistrer", tint = if (changed) Orange else Muted) }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Plus", tint = TextC) }
+                DropdownMenu(menu, { menu = false }) {
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.PictureAsPdf, null, tint = Orange) }, text = { Text("Exporter en PDF") }, onClick = {
+                        menu = false
+                        val t = text ?: ""
+                        scope.launch { ops.run("Création du PDF…", "PDF créé à côté du fichier") { listOf(Fs.textToPdf(file.nameWithoutExtension, t, Fs.freeName(file.parentFile!!, file.nameWithoutExtension + ".pdf"))) } }
+                    })
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.Share, null, tint = TextC) }, text = { Text("Partager") }, onClick = { menu = false; shareFiles(ctx, listOf(file)) })
+                    DropdownMenuItem(leadingIcon = { Icon(Icons.Filled.OpenInNew, null, tint = TextC) }, text = { Text("Ouvrir avec…") }, onClick = { menu = false; openFile(ctx, file) })
+                }
+            }
+        }
+        BusyBar(ops)
+        val t = text
+        if (t == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Orange) }
+        else androidx.compose.foundation.text.BasicTextField(
+            t, { text = it },
+            textStyle = androidx.compose.ui.text.TextStyle(color = TextC, fontSize = 15.sp, lineHeight = 22.sp,
+                fontFamily = if (ext(file) in setOf("txt", "md")) androidx.compose.ui.text.font.FontFamily.Default else androidx.compose.ui.text.font.FontFamily.Monospace),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Orange),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp).clip(RoundedCornerShape(16.dp)).background(Card2)
+                .verticalScroll(rememberScrollState()).padding(14.dp).imePadding(),
+            decorationBox = { inner -> if (t.isEmpty()) Text("Écrivez ici…", color = Muted, fontSize = 15.sp); inner() },
+        )
+    }
+    if (askLeave) AlertDialog(
+        onDismissRequest = { askLeave = false }, containerColor = Card2,
+        title = { Text("Enregistrer les modifications ?") },
+        confirmButton = { TextButton(onClick = { askLeave = false; save(back) }) { Text("Enregistrer", color = Orange, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = { askLeave = false; back() }) { Text("Ne pas enregistrer", color = Red) } },
     )
 }

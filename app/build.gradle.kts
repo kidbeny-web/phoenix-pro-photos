@@ -11,8 +11,8 @@ android {
         applicationId = "fr.phoenixpro.fichiers"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     // Mot de passe de la clé Phoenix Pro : lu depuis le secret GitHub PHOENIX_KEY_PASSWORD (jamais écrit dans le code).
